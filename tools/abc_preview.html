@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mockingbird preview</title>
+<script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/abcjs-audio.css">
+<style>
+  body { font-family: system-ui, sans-serif; margin: 1.5rem; max-width: 1100px; }
+  form { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: end; margin-bottom: 1rem; }
+  label { display: flex; flex-direction: column; font-size: .8rem; color: #444; }
+  select, input { padding: .25rem .4rem; font-size: .95rem; }
+  button { padding: .4rem .9rem; font-size: .95rem; }
+  #status { color: #666; font-size: .85rem; min-height: 1.2em; }
+  #paper { border: 1px solid #ddd; padding: .5rem; margin-top: .5rem; }
+  .abcjs-highlight { fill: #d33; }
+  #abc { width: 100%; height: 8rem; font-family: monospace; margin-top: 1rem; }
+  kbd { background: #eee; border-radius: 3px; padding: 0 .3rem; font-size: .85em; }
+</style>
+</head>
+<body>
+<h2>Mockingbird level preview</h2>
+<form id="f">
+  <label>Key <select name="tonic">
+    <option>C</option><option>Db</option><option selected>D</option><option>Eb</option><option>E</option><option>F</option>
+    <option>F#</option><option>G</option><option>Ab</option><option>A</option><option>Bb</option><option>B</option></select></label>
+  <label>Mode <select name="mode"><option>major</option><option>minor</option></select></label>
+  <label>Meter <select name="meter"><option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option><option>3/8</option><option>6/4</option></select></label>
+  <label>Voice <select name="voice"><option>S</option><option>A</option><option>T</option><option>B</option></select></label>
+  <label>Difficulty <select name="difficulty"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option></select></label>
+  <label>Bars <input name="bars" type="number" min="1" max="32" value="8" style="width:4rem"></label>
+  <label>Style <select name="style"><option value="folk">folk</option><option value="chorale">chorale</option><option value="renaissance">renaissance</option><option value="lied">lied</option></select></label>
+  <label>Accompaniment <select name="accompaniment"><option>block</option><option>arpeggio</option><option>none</option></select></label>
+  <label>Tempo <input name="tempo_bpm" type="number" min="30" max="200" value="80" style="width:4.5rem"></label>
+  <label>Seed <input name="seed" type="number" placeholder="random" style="width:5.5rem"></label>
+  <button type="submit">Generate</button>
+  <a id="midi" href="#" download hidden>Download MIDI</a>
+</form>
+<div id="status"></div>
+<div id="audio"></div>
+<div id="paper"></div>
+<p><kbd>Space</kbd> play / pause · <kbd>R</kbd> restart · <kbd>+</kbd> / <kbd>-</kbd> tempo · <kbd>G</kbd> generate</p>
+<textarea id="abc" spellcheck="false"></textarea>
+<script>
+const form = document.getElementById("f");
+const status = document.getElementById("status");
+const abcBox = document.getElementById("abc");
+let synth = null, visual = null, warp = 100;
+
+function renderAbc(abc) {
+  abcBox.value = abc;
+  visual = ABCJS.renderAbc("paper", abc, { responsive: "resize", add_classes: true })[0];
+  if (!ABCJS.synth.supportsAudio()) { status.textContent = "Audio not supported in this browser"; return; }
+  if (synth) synth.pause();
+  synth = new ABCJS.synth.SynthController();
+  const cursor = new ABCJS.TimingCallbacks(visual, {});
+  synth.load("#audio", cursorControl, { displayLoop: false, displayRestart: true, displayPlay: true, displayProgress: true, displayWarp: true });
+  // the accompaniment is a real second voice in the ABC; never let abcjs add its own
+  synth.setTune(visual, false, { chordsOff: true })
+    .then(() => { status.textContent = "Ready. Press Space to play."; })
+    .catch(e => { status.textContent = "Synth error: " + e; });
+}
+
+const cursorControl = {
+  onEvent(ev) {
+    document.querySelectorAll(".abcjs-highlight").forEach(el => el.classList.remove("abcjs-highlight"));
+    if (ev && ev.elements) ev.elements.forEach(g => g.forEach(el => el.classList.add("abcjs-highlight")));
+  },
+  onFinished() { document.querySelectorAll(".abcjs-highlight").forEach(el => el.classList.remove("abcjs-highlight")); }
+};
+
+async function generate() {
+  const data = Object.fromEntries(new FormData(form).entries());
+  ["difficulty", "bars", "tempo_bpm"].forEach(k => data[k] = parseInt(data[k]));
+  if (data.seed === "") delete data.seed; else data.seed = parseInt(data.seed);
+  status.textContent = "Generating…";
+  const t0 = performance.now();
+  const r = await fetch("/levels", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+  if (!r.ok) { status.textContent = "Error: " + (await r.text()); return; }
+  const level = await r.json();
+  const abc = await (await fetch(`/levels/${level.id}/export?fmt=abc`)).text();
+  const midi = document.getElementById("midi");
+  midi.href = `/levels/${level.id}/export?fmt=midi`; midi.hidden = false;
+  renderAbc(abc);
+  status.textContent = `Level ${level.id} · difficulty score ${level.difficulty_score.toFixed(1)} · ${((performance.now() - t0) / 1000).toFixed(1)} s. Press Space to play.`;
+}
+
+form.addEventListener("submit", e => { e.preventDefault(); generate(); });
+abcBox.addEventListener("change", () => renderAbc(abcBox.value));
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (e.code === "Space") { e.preventDefault(); if (synth) synth.play(); }
+  else if (e.key === "r" || e.key === "R") { if (synth) synth.restart(); }
+  else if (e.key === "+" || e.key === "=") { warp = Math.min(200, warp + 10); if (synth) synth.setWarp(warp); status.textContent = `Tempo ${warp}%`; }
+  else if (e.key === "-") { warp = Math.max(30, warp - 10); if (synth) synth.setWarp(warp); status.textContent = `Tempo ${warp}%`; }
+  else if (e.key === "g" || e.key === "G") { generate(); }
+});
+</script>
+</body>
+</html>
