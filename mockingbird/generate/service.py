@@ -8,11 +8,12 @@ from pathlib import Path
 import torch
 
 from .. import difficulty, tokenizer as tk
-from ..harmonize.render import render
+from ..harmonize.render import STYLES as TEXTURES, render, resolve_texture
 from ..harmonize.viterbi import harmonize
+from ..harmonize.voicing import voice as voice_lead
 from ..model import MelodyModel
 from ..schema import AccompEvent, GenerateRequest, Level, Note, Phrase
-from ..theory import VOICE_RANGES, frame_offset, is_diatonic
+from ..theory import VOICE_RANGES, frame_offset, is_diatonic, tonic_pc
 from .constraints import ConstraintState
 from .sampler import sample
 
@@ -137,13 +138,14 @@ class LevelGenerator:
         if best is None:
             raise RuntimeError("no valid melody sampled; try another seed or fewer constraints")
         phrase = best[1]
-        return self.finish(phrase, req)
+        return self.finish(phrase, req, style)
 
-    def finish(self, phrase: Phrase, req: GenerateRequest) -> Level:
+    def finish(self, phrase: Phrase, req: GenerateRequest, style: str | None = None) -> Level:
+        """Place the melody in the singer's range, then harmonize, voice-lead and
+        render the accompaniment in concert pitch."""
+        if req.accompaniment not in TEXTURES:
+            raise RuntimeError(f"accompaniment must be one of {TEXTURES}")
         offset = frame_offset(req.tonic, req.mode)
-        chords = harmonize(phrase.notes, req.meter, req.mode, phrase.pickup_ticks, offset=offset,
-                           ending=phrase.is_ending)
-        acc = render(chords, phrase.notes, req.meter, req.accompaniment)
         lo, hi = VOICE_RANGES[req.voice]
         pitched = [n.pitch for n in phrase.notes if n.pitch is not None]
         best_shift, best_cost = offset, float("inf")
@@ -156,8 +158,15 @@ class LevelGenerator:
                 best_shift, best_cost = shift, cost
         melody = [Note(pitch=n.pitch + best_shift if n.pitch is not None else None,
                        duration=n.duration, tie=n.tie) for n in phrase.notes]
-        acc = [AccompEvent(start=e.start, duration=e.duration, pitches=[p + best_shift for p in e.pitches])
-               for e in acc]
+        frame_chords = harmonize(phrase.notes, req.meter, req.mode, phrase.pickup_ticks, offset=offset,
+                                 ending=phrase.is_ending)
+        chords = [c.model_copy(update={"root_pc": (c.root_pc + best_shift) % 12}) for c in frame_chords]
+        texture = resolve_texture(req.accompaniment, style or req.style or phrase.style)
+        acc: list[AccompEvent] = []
+        if texture != "none":
+            voicings = voice_lead(chords, melody, req.mode, tonic_pc(req.tonic),
+                                  below_melody=req.voice in ("S", "A"), ending=phrase.is_ending)
+            acc = render(chords, voicings, melody, req.meter, texture, phrase.pickup_ticks)
         return Level(id=uuid.uuid4().hex[:12], tonic=req.tonic, mode=req.mode, meter=req.meter,
                      voice=req.voice, difficulty=req.difficulty, bars=req.bars, tempo_bpm=req.tempo_bpm,
                      pickup_ticks=phrase.pickup_ticks, melody=melody, chords=chords, accompaniment=acc,

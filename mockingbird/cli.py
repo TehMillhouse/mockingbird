@@ -75,7 +75,7 @@ def generate(
     difficulty: int = 2,
     bars: int = 8,
     style: str | None = None,
-    accompaniment: str = "block",
+    accompaniment: str = "auto",
     seed: int | None = None,
     out: Path = Path("level.abc"),
     model: Path = Path("models/melody-v1.pt"),

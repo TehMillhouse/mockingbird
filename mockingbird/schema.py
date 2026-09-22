@@ -42,7 +42,7 @@ class Phrase(BaseModel):
 class Chord(BaseModel):
     start: int
     duration: int
-    root_pc: int
+    root_pc: int  # concert pitch class in a Level; frame pitch class straight from the harmonizer
     quality: str  # maj | min | dim | dom7
     roman: str
     symbol: str  # concert-pitch chord symbol, e.g. "G7"
@@ -79,6 +79,6 @@ class GenerateRequest(BaseModel):
     difficulty: int = Field(default=2, ge=1, le=5)
     bars: int = Field(default=8, ge=1, le=32)
     style: Style | None = None
-    accompaniment: str = "block"
+    accompaniment: str = "auto"  # auto | chorale | block | oompah | broken | none
     tempo_bpm: int = 80
     seed: int | None = None

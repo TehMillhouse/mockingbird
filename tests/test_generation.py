@@ -69,7 +69,9 @@ def test_finish_places_melody_in_voice_range_and_exports(tiny_model, tmp_path):
         reparsed = converter.parse(abc, format="abc")
         acc_chords = [c for c in reparsed.recurse().getElementsByClass("Chord")
                       if c.__class__.__name__ == "Chord"]  # skip ChordSymbol, a Chord subclass
-        assert acc_chords and max(p.midi for c in acc_chords for p in c.pitches) < min(ps)
+        assert acc_chords
+        if voice in ("S", "A"):  # for low voices the accompaniment may sit above the melody
+            assert max(p.midi for c in acc_chords for p in c.pitches) < min(ps)
         melody_notes = [n.pitch.midi for n in reparsed.recurse().notes if n.isNote]
         written = 12 if voice == "T" else 0  # tenor is written an octave up for the treble-8 clef
         assert melody_notes[:len(ps)] == [p + written for p in ps]

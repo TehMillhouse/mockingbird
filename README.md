@@ -96,10 +96,24 @@ The model (a 5M-parameter GPT-style decoder with metric embeddings) samples eigh
 masks that guarantee the token grammar, exact bar fill, the requested bar count, a
 pitch span that fits the voice, a leap cap per difficulty and, for levels 1 and 2,
 diatonic pitches only. Candidates are scored with the difficulty function, checked
-against a 12-note n-gram index of the training set (no verbatim copies), harmonized
-with a Viterbi search over functional chords (one per half bar in 4/4, per bar
-otherwise), rendered as block chords or arpeggios below the melody, and transposed
-into the requested key and voice range.
+against a 12-note n-gram index of the training set (no verbatim copies) and
+transposed into the requested key and voice range.
+
+### Accompaniment
+
+Rule-based, in three stages (`mockingbird/harmonize`):
+
+1. `viterbi.py` fits functional chords beat by beat (diatonic triads, V7, a few
+   secondary dominants) with a change cost that is small on strong beats and large on
+   weak ones, so the harmonic rhythm follows the melody but changes land on the beat;
+   for endings the last bars are biased towards pre-dominant, dominant, tonic.
+2. `voicing.py` voice-leads bass, tenor and alto under the melody by a second Viterbi
+   pass over candidate voicings: smooth inner motion, bass by step or contrary to the
+   tune, no parallel fifths or octaves with any voice, complete chords, no doubled
+   leading tone, root position preferred with a cadential six-four allowed.
+3. `render.py` realises a texture: `chorale` (voices re-attack with the melody),
+   `oompah` (bass on strong beats, chords between), `broken` (bass-tenor-alto-tenor
+   eighths), `block`, or `none`. `auto` picks by style.
 
 ### API
 
