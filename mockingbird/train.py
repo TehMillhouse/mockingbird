@@ -116,6 +116,8 @@ def collate_tokens(seqs: list[list[int]]) -> tuple[torch.Tensor, dict[str, torch
     abs_t = torch.zeros((len(seqs), t), dtype=torch.long)
     beat = torch.full((len(seqs),), 24, dtype=torch.long)
     bar = torch.full((len(seqs),), 96, dtype=torch.long)
+    anchor = torch.zeros((len(seqs), t), dtype=torch.bool)
+    pickup_id = tk.tid(tk.PICKUP)
     for r, s in enumerate(seqs):
         x[r, :len(s)] = torch.tensor(s)
         m = tk.metric_info(s)
@@ -124,7 +126,9 @@ def collate_tokens(seqs: list[list[int]]) -> tuple[torch.Tensor, dict[str, torch
         abs_t[r, :len(s)] = torch.tensor(m.abs_ticks)
         beat[r] = m.beat_ticks
         bar[r] = m.bar_ticks
-    return x, {"bars": bars, "ticks": ticks, "abs": abs_t, "beat": beat, "bar": bar}
+        n_prefix = tk.PREFIX_LEN + (1 if len(s) > tk.PREFIX_LEN and s[tk.PREFIX_LEN] == pickup_id else 0)
+        anchor[r, :min(n_prefix, len(s))] = True
+    return x, {"bars": bars, "ticks": ticks, "abs": abs_t, "beat": beat, "bar": bar, "anchor": anchor}
 
 
 def shift_metric(metric: dict[str, torch.Tensor], device: str) -> dict[str, torch.Tensor]:

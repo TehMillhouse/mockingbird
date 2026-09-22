@@ -49,6 +49,8 @@ def train(
     loop_jitter: int = 1,
     n_core: int = 2,
     sandwich_norm: bool = False,
+    anchor_prefix: bool = False,
+    seed: int = 0,
     patience: int = 8,
     checkpoint: str = "melody-v1.pt",
 ):
@@ -57,10 +59,11 @@ def train(
     from .train import TrainConfig, train as run_train
 
     run_train(TrainConfig(data_dir=data, out_dir=out, epochs=epochs, batch_size=batch_size, lr=lr,
-                          patience=patience, checkpoint_name=checkpoint),
+                          patience=patience, checkpoint_name=checkpoint, seed=seed),
               ModelConfig(n_layer=n_layer, d_model=d_model, d_ff=4 * d_model, dropout=dropout,
                           pos_encoding=pos, metric_emb=metric_emb, arch=arch, loop_center=loop_center,
-                          loop_jitter=loop_jitter, n_core=n_core, sandwich_norm=sandwich_norm))
+                          loop_jitter=loop_jitter, n_core=n_core, sandwich_norm=sandwich_norm,
+                          anchor_prefix=anchor_prefix))
 
 
 @app.command()

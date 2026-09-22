@@ -6,6 +6,12 @@
       "runtimeExecutable": "uv",
       "runtimeArgs": ["run", "mb", "serve", "--port", "8000"],
       "port": 8000
+    },
+    {
+      "name": "plots",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8010", "--directory", "models/plots"],
+      "port": 8010
     }
   ]
 }

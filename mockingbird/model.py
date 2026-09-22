@@ -17,6 +17,10 @@ Two layouts are available. `stack` is a plain GPT stack. `looped` runs a prelude
 a small core block group several times with shared weights (a learned per-iteration
 embedding tells the core which pass it is on), then a coda. The loop count is jittered
 during training and fixed at `loop_center` for evaluation and generation.
+
+With `anchor_prefix`, attention from any token to the conditioning prefix (mode, meter,
+difficulty, style, range) is computed from unrotated queries and keys, so those
+tokens are reachable without the distance decay rotary attention otherwise imposes.
 """
 from __future__ import annotations
 
@@ -48,6 +52,7 @@ class ModelConfig:
     loop_center: int = 3
     loop_jitter: int = 1
     sandwich_norm: bool = False
+    anchor_prefix: bool = False  # distance-free attention to the prefix under RoPE
 
 
 def _rope_cache(max_len: int, head_dim: int, device, base: float = 10000.0) -> tuple[torch.Tensor, torch.Tensor]:
@@ -103,28 +108,50 @@ class Block(nn.Module):
         self.n_head = cfg.n_head
         self.attn_dropout = cfg.dropout
         self.rope = cfg.pos_encoding in ("rope", "metric_rope")
+        self.anchor = cfg.anchor_prefix and self.rope
         # sandwich norm: also normalise each branch output before the residual add
         self.post1 = nn.LayerNorm(cfg.d_model) if cfg.sandwich_norm else nn.Identity()
         self.post2 = nn.LayerNorm(cfg.d_model) if cfg.sandwich_norm else nn.Identity()
 
-    def forward(self, x: torch.Tensor, rope: tuple[torch.Tensor, torch.Tensor] | None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, rope: tuple[torch.Tensor, torch.Tensor] | None,
+                anchor: torch.Tensor | None = None) -> torch.Tensor:
         b, t, d = x.shape
         q, k, v = self.qkv(self.ln1(x)).split(d, dim=2)
         q = q.view(b, t, self.n_head, d // self.n_head).transpose(1, 2)
         k = k.view(b, t, self.n_head, d // self.n_head).transpose(1, 2)
         v = v.view(b, t, self.n_head, d // self.n_head).transpose(1, 2)
+        q_raw, k_raw = q, k
         if self.rope and rope is not None:
             cos, sin = rope
             if cos.dim() == 2:  # token-index RoPE: shared table
                 cos, sin = cos[:t], sin[:t]
             q = _apply_rope(q, cos, sin)
             k = _apply_rope(k, cos, sin)
-        y = F.scaled_dot_product_attention(q, k, v, is_causal=True,
-                                           dropout_p=self.attn_dropout if self.training else 0.0)
+        if self.anchor and anchor is not None:
+            y = self._anchored_attention(q, k, q_raw, k_raw, v, anchor)
+        else:
+            y = F.scaled_dot_product_attention(q, k, v, is_causal=True,
+                                               dropout_p=self.attn_dropout if self.training else 0.0)
         y = y.transpose(1, 2).contiguous().view(b, t, d)
         x = x + self.drop(self.post1(self.proj(y)))
         x = x + self.drop(self.post2(self.ff(self.ln2(x))))
         return x
+
+
+    def _anchored_attention(self, q, k, q_raw, k_raw, v, anchor: torch.Tensor) -> torch.Tensor:
+        """Causal attention where scores against anchor keys (anchor: (B, T) bool) use
+        the unrotated projections, so they do not depend on distance."""
+        b, h, t, dh = q.shape
+        scale = 1.0 / math.sqrt(dh)
+        scores = torch.matmul(q, k.transpose(-1, -2)) * scale
+        scores_anchor = torch.matmul(q_raw, k_raw.transpose(-1, -2)) * scale
+        scores = torch.where(anchor[:, None, None, :], scores_anchor, scores)
+        causal = torch.ones(t, t, dtype=torch.bool, device=q.device).tril()
+        scores = scores.masked_fill(~causal, float("-inf"))
+        attn = torch.softmax(scores.float(), dim=-1).to(v.dtype)
+        if self.training and self.attn_dropout > 0:
+            attn = F.dropout(attn, p=self.attn_dropout)
+        return torch.matmul(attn, v)
 
 
 class MelodyModel(nn.Module):
@@ -188,19 +215,20 @@ class MelodyModel(nn.Module):
                 raise ValueError("metric_rope model needs metric positions")
             ang = metric_rope_angles(metric["abs"], metric["beat"], metric["bar"], self.cfg.d_model // self.cfg.n_head)
             rope = (ang.cos().unsqueeze(1).to(x.dtype), ang.sin().unsqueeze(1).to(x.dtype))
+        anchor = metric.get("anchor") if (metric is not None and self.cfg.anchor_prefix) else None
         if self.cfg.arch == "looped":
             for blk in self.prelude:
-                x = blk(x, rope)
+                x = blk(x, rope, anchor)
             n_loops = loops if loops is not None else self.cfg.loop_center
             for i in range(n_loops):
                 x = x + self.loop_emb.weight[min(i, self.loop_emb.num_embeddings - 1)]
                 for blk in self.core:
-                    x = blk(x, rope)
+                    x = blk(x, rope, anchor)
             for blk in self.coda:
-                x = blk(x, rope)
+                x = blk(x, rope, anchor)
         else:
             for blk in self.blocks:
-                x = blk(x, rope)
+                x = blk(x, rope, anchor)
         x = self.ln_f(x)
         return x @ self.tok.weight.T  # tied output embedding
 

@@ -38,7 +38,7 @@ def summarize(run: Path) -> dict:
 def main(paths: list[str]) -> None:
     rows = [summarize(Path(p)) for p in paths]
     keys = ["run", "params_M", "arch", "epochs", "best_epoch", "best_val", "train_at_best",
-            "val_folk", "val_chorale", "val_lied", "val_renaissance"]
+            "val_folk", "val_chorale", "val_lied", "val_renaissance", "val_choral"]
     widths = {k: max(len(k), *(len(str(r.get(k, ""))) for r in rows)) for k in keys}
     print(" | ".join(k.ljust(widths[k]) for k in keys))
     print("-+-".join("-" * widths[k] for k in keys))

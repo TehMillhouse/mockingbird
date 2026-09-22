@@ -40,7 +40,7 @@ def sample(model: MelodyModel, prefix: list[int], *, n: int, max_new: int, devic
         if all(done) or x.size(1) >= model.cfg.max_len:
             break
         metric = None
-        if model.cfg.metric_emb or model.cfg.pos_encoding == "metric_rope":
+        if model.cfg.metric_emb or model.cfg.pos_encoding == "metric_rope" or model.cfg.anchor_prefix:
             _, metric = collate_tokens(x.tolist())  # rows are PAD-extended after EOS
             metric = {k: v.to(device) for k, v in metric.items()}
         with torch.autocast(device, dtype=torch.bfloat16, enabled=device == "cuda"):
