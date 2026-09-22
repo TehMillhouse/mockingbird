@@ -16,6 +16,9 @@
   .abcjs-highlight { fill: #d33; }
   #abc { width: 100%; height: 8rem; font-family: monospace; margin-top: 1rem; }
   kbd { background: #eee; border-radius: 3px; padding: 0 .3rem; font-size: .85em; }
+  #mix { display: flex; gap: 2rem; margin: .4rem 0; }
+  #mix label { flex-direction: row; align-items: center; gap: .5rem; }
+  #mix span { min-width: 3rem; }
 </style>
 </head>
 <body>
@@ -37,15 +40,48 @@
   <a id="midi" href="#" download hidden>Download MIDI</a>
 </form>
 <div id="status"></div>
+<div id="mix">
+  <label>Voice volume <input id="volVoice" type="range" min="0" max="100" value="100"> <span id="volVoiceV">100%</span></label>
+  <label>Piano volume <input id="volPiano" type="range" min="0" max="100" value="70"> <span id="volPianoV">70%</span></label>
+</div>
 <div id="audio"></div>
 <div id="paper"></div>
-<p><kbd>Space</kbd> play / pause · <kbd>R</kbd> restart · <kbd>+</kbd> / <kbd>-</kbd> tempo · <kbd>G</kbd> generate</p>
+<p><kbd>Space</kbd> play / pause · <kbd>R</kbd> restart · <kbd>+</kbd> / <kbd>-</kbd> tempo · <kbd>G</kbd> generate · <kbd>[</kbd> / <kbd>]</kbd> voice volume · <kbd>;</kbd> / <kbd>'</kbd> piano volume</p>
 <textarea id="abc" spellcheck="false"></textarea>
 <script>
 const form = document.getElementById("f");
 const status = document.getElementById("status");
 const abcBox = document.getElementById("abc");
 let synth = null, visual = null, warp = 100;
+const volVoice = document.getElementById("volVoice"), volPiano = document.getElementById("volPiano");
+
+// Scale note velocities per track before synthesis: track 0 is the voice (V:1),
+// every other track belongs to the piano staff (V:2).
+function mixTracks(tracks) {
+  const v = volVoice.value / 100, p = volPiano.value / 100;
+  tracks.forEach((track, i) => track.forEach(ev => {
+    if (ev.volume !== undefined) ev.volume = Math.round(ev.volume * (i === 0 ? v : p));
+  }));
+  return tracks;
+}
+
+function primeSynth() {
+  if (!synth || !visual) return;
+  const wasPlaying = synth.isStarted;
+  synth.pause();
+  synth.setTune(visual, wasPlaying, { chordsOff: true, sequenceCallback: mixTracks })
+    .catch(e => { status.textContent = "Synth error: " + e; });
+}
+
+function setVolume(slider, label, delta) {
+  slider.value = Math.max(0, Math.min(100, parseInt(slider.value) + delta));
+  label.textContent = slider.value + "%";
+  primeSynth();
+}
+[[volVoice, "volVoiceV"], [volPiano, "volPianoV"]].forEach(([s, id]) => {
+  s.addEventListener("input", () => { document.getElementById(id).textContent = s.value + "%"; });
+  s.addEventListener("change", primeSynth);
+});
 
 function renderAbc(abc) {
   abcBox.value = abc;
@@ -56,7 +92,7 @@ function renderAbc(abc) {
   const cursor = new ABCJS.TimingCallbacks(visual, {});
   synth.load("#audio", cursorControl, { displayLoop: false, displayRestart: true, displayPlay: true, displayProgress: true, displayWarp: true });
   // the accompaniment is a real second voice in the ABC; never let abcjs add its own
-  synth.setTune(visual, false, { chordsOff: true })
+  synth.setTune(visual, false, { chordsOff: true, sequenceCallback: mixTracks })
     .then(() => { status.textContent = "Ready. Press Space to play."; })
     .catch(e => { status.textContent = "Synth error: " + e; });
 }
@@ -94,6 +130,10 @@ document.addEventListener("keydown", e => {
   else if (e.key === "+" || e.key === "=") { warp = Math.min(200, warp + 10); if (synth) synth.setWarp(warp); status.textContent = `Tempo ${warp}%`; }
   else if (e.key === "-") { warp = Math.max(30, warp - 10); if (synth) synth.setWarp(warp); status.textContent = `Tempo ${warp}%`; }
   else if (e.key === "g" || e.key === "G") { generate(); }
+  else if (e.key === "[") { setVolume(volVoice, document.getElementById("volVoiceV"), -10); }
+  else if (e.key === "]") { setVolume(volVoice, document.getElementById("volVoiceV"), 10); }
+  else if (e.key === ";") { setVolume(volPiano, document.getElementById("volPianoV"), -10); }
+  else if (e.key === "'") { setVolume(volPiano, document.getElementById("volPianoV"), 10); }
 });
 </script>
 </body>
