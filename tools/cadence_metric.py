@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import warnings
 from collections import Counter
 from pathlib import Path
@@ -56,10 +57,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--levels", type=int, default=24)
     ap.add_argument("--val", type=Path, default=Path("data/processed/val.jsonl"))
+    ap.add_argument("--model", type=Path, default=Path("models/melody-v1.pt"))
+    ap.add_argument("--skip-val", action="store_true")
     args = ap.parse_args()
 
     by_style: dict[str, list[dict]] = {}
-    with args.val.open(encoding="utf-8") as f:
+    with (args.val.open(encoding="utf-8") if not args.skip_val else open(os.devnull)) as f:
         for line in f:
             r = json.loads(line)
             if not r.get("is_ending"):
@@ -71,7 +74,7 @@ def main() -> None:
 
     from mockingbird.generate.service import LevelGenerator
 
-    gen = LevelGenerator()
+    gen = LevelGenerator(args.model, thresholds_path=Path("models/difficulty_thresholds.json"))
     rows = []
     styles = ["folk", "chorale", "lied", "renaissance"]
     for seed in range(args.levels):

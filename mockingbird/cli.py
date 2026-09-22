@@ -34,13 +34,25 @@ def train(
     n_layer: int = 6,
     d_model: int = 256,
     dropout: float = 0.2,
+    pos: str = typer.Option("learned", help="learned | rope | none"),
+    metric_emb: bool = True,
+    arch: str = typer.Option("stack", help="stack | looped"),
+    loop_center: int = 3,
+    loop_jitter: int = 1,
+    n_core: int = 2,
+    sandwich_norm: bool = False,
+    patience: int = 8,
+    checkpoint: str = "melody-v1.pt",
 ):
-    """Train the melody model; writes models/melody-v1.pt and a JSONL training log."""
+    """Train the melody model; writes <out>/<checkpoint> and a JSONL training log."""
     from .model import ModelConfig
     from .train import TrainConfig, train as run_train
 
-    run_train(TrainConfig(data_dir=data, out_dir=out, epochs=epochs, batch_size=batch_size, lr=lr),
-              ModelConfig(n_layer=n_layer, d_model=d_model, d_ff=4 * d_model, dropout=dropout))
+    run_train(TrainConfig(data_dir=data, out_dir=out, epochs=epochs, batch_size=batch_size, lr=lr,
+                          patience=patience, checkpoint_name=checkpoint),
+              ModelConfig(n_layer=n_layer, d_model=d_model, d_ff=4 * d_model, dropout=dropout,
+                          pos_encoding=pos, metric_emb=metric_emb, arch=arch, loop_center=loop_center,
+                          loop_jitter=loop_jitter, n_core=n_core, sandwich_norm=sandwich_norm))
 
 
 @app.command()

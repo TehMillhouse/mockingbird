@@ -38,8 +38,13 @@ def sample(model: MelodyModel, prefix: list[int], *, n: int, max_new: int, devic
     for _ in range(max_new):
         if all(done) or x.size(1) >= model.cfg.max_len:
             break
+        bars = ticks = None
+        if model.cfg.metric_emb:
+            pos = [tk.metric_positions(row) for row in x.tolist()]  # rows are PAD-extended after EOS
+            bars = torch.tensor([p[0] for p in pos], dtype=torch.long, device=device)
+            ticks = torch.tensor([p[1] for p in pos], dtype=torch.long, device=device)
         with torch.autocast(device, dtype=torch.bfloat16, enabled=device == "cuda"):
-            logits = model(x)[:, -1, :].float()
+            logits = model(x, bars, ticks)[:, -1, :].float()
         logits = logits / max(temperature, 1e-4)
         if mask_fn is not None:
             for r in range(n):

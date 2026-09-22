@@ -50,6 +50,12 @@ ID_TO_PITCH = {TOKEN_TO_ID[f"P{p}"]: p for p in range(PITCH_MIN, PITCH_MAX + 1)}
 ID_TO_DURATION = {TOKEN_TO_ID[f"D{d}"]: d for d in DURATIONS}
 PREFIX_LEN = 6  # BOS MODE METER DIFF STYLE RANGE (PICKUP is optional and follows)
 
+# Metric position classes for the model's optional bar/tick embeddings.
+MAX_BAR_INDEX = 40          # windows have at most 32 bars plus a pickup; clamp beyond
+TICK_STEP = 3               # smallest duration on the grid
+BAR_TICK_CLASSES = 64       # 0..62 = tick // 3 within the bar, 63 = "at the bar line"
+BAR_LINE_CLASS = BAR_TICK_CLASSES - 1
+
 
 def tid(token: str) -> int:
     return TOKEN_TO_ID[token]
@@ -218,6 +224,69 @@ def decode(tokens: list[int], *, source: str = "") -> Decoded:
     phrase = Phrase(mode=mode, meter=meter, style=style, notes=notes, pickup_ticks=pickup,
                     is_ending=is_ending, range_bucket=rng, difficulty=difficulty, source=source)
     return Decoded(phrase=phrase, complete_bars=bars, trailing_ticks=pos)
+
+
+def _build_token_tables() -> tuple[list[int], list[int], dict[int, int]]:
+    """Per-token-id kind (0 prefix-like, 1 BAR, 2 duration, 3 other), duration value, and
+    bar length per METER token; used by `metric_positions` to stay fast in pure Python."""
+    kind = [3] * VOCAB_SIZE
+    durval = [0] * VOCAB_SIZE
+    meter_bt: dict[int, int] = {}
+    for t, name in enumerate(VOCAB):
+        if name == BAR:
+            kind[t] = 1
+        elif name[:1] == "D" and name[1:].isdigit():
+            kind[t] = 2
+            durval[t] = int(name[1:])
+        elif name == PICKUP or name.startswith(("MODE_", "METER_", "DIFF_", "STYLE_", "RANGE_")) or name == BOS:
+            kind[t] = 0
+            if name.startswith("METER_"):
+                meter_bt[t] = bar_ticks(name.removeprefix("METER_").replace("_", "/"))
+    return kind, durval, meter_bt
+
+
+_KIND, _DURVAL, _METER_BT = _build_token_tables()
+
+
+def metric_positions(tokens: list[int]) -> tuple[list[int], list[int]]:
+    """Per-token (bar index, tick class) derived from the stream itself.
+
+    Prefix tokens sit at bar 0, tick 0. A note or rest token and its duration token
+    carry the note's start position; TIE, REMAIN and EOS carry the current position;
+    BAR carries the bar it closes with the special bar-line tick class. The pickup bar,
+    if any, counts as bar 0 with ticks counted from its own start."""
+    n = len(tokens)
+    bars = [0] * n
+    ticks = [0] * n
+    bar = 0
+    pos = 0
+    start_pos = 0
+    bt = 0
+    max_tick = BAR_LINE_CLASS - 1
+    for i in range(n):
+        t = tokens[i]
+        k = _KIND[t]
+        if k == 0 and (i < PREFIX_LEN or VOCAB[t] == PICKUP):
+            if t in _METER_BT:
+                bt = _METER_BT[t]
+            continue  # bar 0, tick 0
+        b = bar if bar < MAX_BAR_INDEX else MAX_BAR_INDEX
+        bars[i] = b
+        if k == 1:
+            ticks[i] = BAR_LINE_CLASS
+            bar += 1
+            pos = 0
+        elif k == 2:
+            c = start_pos // TICK_STEP
+            ticks[i] = c if c < max_tick else max_tick
+            pos += _DURVAL[t]
+            if bt and pos > bt:
+                pos = bt  # malformed stream: stay at the bar line
+        else:
+            start_pos = pos
+            c = pos // TICK_STEP
+            ticks[i] = c if c < max_tick else max_tick
+    return bars, ticks
 
 
 def merge_ties(notes: list[Note]) -> list[Note]:

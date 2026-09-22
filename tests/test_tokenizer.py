@@ -128,3 +128,20 @@ def test_countdown_with_pickup_and_partial_last_bar():
     assert [n for n in names if n.startswith("REMAIN")] == ["REMAIN_3", "REMAIN_2", "REMAIN_1"]
     assert names[names.index("REMAIN_1") + 1:names.index("REMAIN_1") + 3] == ["P60", "D72"]
     assert tk.decode(tk.encode(ph)).phrase.is_ending
+
+
+def test_metric_positions_follow_bars_and_ticks():
+    ph = twinkle().model_copy(update={"is_ending": True})
+    toks = tk.encode(ph)
+    bars, ticks = tk.metric_positions(toks)
+    names = [tk.VOCAB[t] for t in toks]
+    assert len(bars) == len(ticks) == len(toks)
+    assert bars[:6] == [0] * 6 and ticks[:6] == [0] * 6
+    # first note of bar 2 (index 1) starts at tick 0; its third quarter at tick 48 -> class 16
+    i2 = names.index("BAR") + 1  # REMAIN_3 opens bar 1
+    assert names[i2] == "REMAIN_3" and bars[i2] == 1 and ticks[i2] == 0
+    p = [j for j, n in enumerate(names) if n.startswith("P") and bars[j] == 1][2]
+    assert ticks[p] == 48 // tk.TICK_STEP and ticks[p + 1] == ticks[p]  # duration token shares position
+    bar_tokens = [j for j, n in enumerate(names) if n == "BAR"]
+    assert all(ticks[j] == tk.BAR_LINE_CLASS for j in bar_tokens)
+    assert [bars[j] for j in bar_tokens] == [0, 1, 2, 3]

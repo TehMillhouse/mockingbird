@@ -66,9 +66,26 @@ prepared; generation forces the countdown at the requested bar count. The key to
 is never a token: it is applied on export. Difficulty buckets are calibrated to
 quintiles of the training data per style (`models/difficulty_thresholds.json`).
 
+### Model variants
+
+`mb train` exposes the architecture switches used for ablations, all recorded in the
+checkpoint so generation needs no extra flags:
+
+- `--pos learned|rope|none`: learned absolute positions (default), rotary, or none.
+- `--metric-emb` (default on): add embeddings for each token's bar index and tick within
+  the bar, both derived from the token stream (`tokenizer.metric_positions`). Same
+  validation loss as without, but faster convergence and cleaner endings.
+- `--arch looped --n-core 2 --loop-center 3 --loop-jitter 1`: prelude block, a shared
+  core block group run `loop_center` times (jittered during training, with a learned
+  per-iteration embedding), then a coda block. `--sandwich-norm` adds a LayerNorm on
+  each residual branch output, which keeps repeated blocks stable.
+
+`tools/compare_runs.py` tabulates runs; `tools/cadence_metric.py --model <ckpt>`
+measures endings.
+
 ### Generation
 
-The model (a 5M-parameter GPT-style decoder) samples eight candidates under logit
+The model (a 5M-parameter GPT-style decoder with metric embeddings) samples eight candidates under logit
 masks that guarantee the token grammar, exact bar fill, the requested bar count, a
 pitch span that fits the voice, a leap cap per difficulty and, for levels 1 and 2,
 diatonic pitches only. Candidates are scored with the difficulty function, checked

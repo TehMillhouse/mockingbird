@@ -38,6 +38,7 @@ class TrainConfig:
     octave_shift_p: float = 0.3
     diff_jitter_p: float = 0.1
     crop_p: float = 0.25
+    checkpoint_name: str = "melody-v1.pt"
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
 
@@ -101,13 +102,19 @@ class PhraseDataset:
             self.rng.shuffle(out)
         return out
 
-    def collate(self, batch: list[int], max_len: int) -> torch.Tensor:
+    def collate(self, batch: list[int], max_len: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Token ids plus per-token bar index and tick class (for metric embeddings)."""
         seqs = [self.encode(i)[:max_len] for i in batch]
         t = max(len(s) for s in seqs)
         x = torch.full((len(seqs), t), tk.tid(tk.PAD), dtype=torch.long)
+        bars = torch.zeros((len(seqs), t), dtype=torch.long)
+        ticks = torch.zeros((len(seqs), t), dtype=torch.long)
         for r, s in enumerate(seqs):
             x[r, :len(s)] = torch.tensor(s)
-        return x
+            b, k = tk.metric_positions(s)
+            bars[r, :len(s)] = torch.tensor(b)
+            ticks[r, :len(s)] = torch.tensor(k)
+        return x, bars, ticks
 
 
 def loss_fn(logits: torch.Tensor, targets: torch.Tensor, smoothing: float) -> torch.Tensor:
@@ -121,9 +128,9 @@ def evaluate(model: MelodyModel, ds: PhraseDataset, cfg: TrainConfig) -> dict[st
     tot = defaultdict(float)
     cnt = defaultdict(int)
     for batch in ds.batches(cfg.batch_size, shuffle=False):
-        x = ds.collate(batch, model.cfg.max_len).to(cfg.device)
+        x, bars, ticks = (m.to(cfg.device) for m in ds.collate(batch, model.cfg.max_len))
         with torch.autocast(cfg.device, dtype=torch.bfloat16, enabled=cfg.device == "cuda"):
-            logits = model(x[:, :-1])
+            logits = model(x[:, :-1], bars[:, :-1], ticks[:, :-1])
         nll = F.cross_entropy(logits.float().reshape(-1, logits.size(-1)), x[:, 1:].reshape(-1),
                               ignore_index=tk.tid(tk.PAD), reduction="none").view(x.size(0), -1)
         mask = (x[:, 1:] != tk.tid(tk.PAD)).float()
@@ -172,7 +179,7 @@ def train(cfg: TrainConfig, mcfg: ModelConfig | None = None) -> Path:
     print(f"train {len(train_ds)} phrases / {sum(train_ds.lengths)} tokens; val {len(val_ds)}")
 
     model = MelodyModel(mcfg).to(cfg.device)
-    print(f"model params {model.num_params() / 1e6:.2f}M on {cfg.device}")
+    print(f"model params {model.num_params() / 1e6:.2f}M on {cfg.device}; config {mcfg}")
     decay, no_decay = [], []
     for name, p in model.named_parameters():
         (decay if p.dim() >= 2 else no_decay).append(p)
@@ -188,7 +195,7 @@ def train(cfg: TrainConfig, mcfg: ModelConfig | None = None) -> Path:
         return cfg.min_lr + 0.5 * (cfg.lr - cfg.min_lr) * (1 + math.cos(math.pi * prog))
 
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
-    best_path = cfg.out_dir / "melody-v1.pt"
+    best_path = cfg.out_dir / cfg.checkpoint_name
     log_path = cfg.out_dir / "train_log.jsonl"
     best_val, bad_epochs, step = float("inf"), 0, 0
     with log_path.open("w") as log:
@@ -196,11 +203,11 @@ def train(cfg: TrainConfig, mcfg: ModelConfig | None = None) -> Path:
             model.train()
             t0, tot_loss, n_batches = time.time(), 0.0, 0
             for batch in train_ds.batches(cfg.batch_size, shuffle=True):
-                x = train_ds.collate(batch, mcfg.max_len).to(cfg.device)
+                x, bars, ticks = (m.to(cfg.device) for m in train_ds.collate(batch, mcfg.max_len))
                 for g in opt.param_groups:
                     g["lr"] = lr_at(step)
                 with torch.autocast(cfg.device, dtype=torch.bfloat16, enabled=cfg.device == "cuda"):
-                    logits = model(x[:, :-1])
+                    logits = model(x[:, :-1], bars[:, :-1], ticks[:, :-1], loops=model.sample_loops())
                 loss = loss_fn(logits.float(), x[:, 1:], cfg.label_smoothing)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
