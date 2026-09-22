@@ -145,3 +145,23 @@ def test_metric_positions_follow_bars_and_ticks():
     bar_tokens = [j for j, n in enumerate(names) if n == "BAR"]
     assert all(ticks[j] == tk.BAR_LINE_CLASS for j in bar_tokens)
     assert [bars[j] for j in bar_tokens] == [0, 1, 2, 3]
+
+
+def test_metric_info_absolute_ticks_and_pickup_alignment():
+    ph = twinkle()
+    m = tk.metric_info(tk.encode(ph))
+    names = [tk.VOCAB[t] for t in tk.encode(ph)]
+    assert m.bar_ticks == 96 and m.beat_ticks == 24
+    # second bar's first note starts at tick 96
+    first_bar = names.index("BAR")
+    assert m.abs_ticks[first_bar] == 96 and m.abs_ticks[first_bar + 1] == 96
+    # pickup: one quarter before the first downbeat -> abs tick -24, downbeat at 0
+    pk = Phrase(mode="major", meter="4/4", style="folk", difficulty=1, range_bucket="S", pickup_ticks=24,
+                notes=[Note(pitch=67, duration=24)] + [Note(pitch=60, duration=24)] * 4)
+    toks = tk.encode(pk)
+    names = [tk.VOCAB[t] for t in toks]
+    m = tk.metric_info(toks)
+    p67 = names.index("P67")
+    assert m.abs_ticks[p67] == -24 and m.tick_class[p67] == 72 // 3
+    downbeat = names.index("BAR") + 1
+    assert names[downbeat] == "P60" and m.abs_ticks[downbeat] == 0 and m.tick_class[downbeat] == 0

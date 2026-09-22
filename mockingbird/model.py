@@ -1,9 +1,17 @@
 """Decoder-only Transformer for melody tokens, with a few architectural switches.
 
 Positional information can come from learned absolute embeddings, rotary embeddings
-(RoPE) or nothing, and can be supplemented by *metric embeddings*: each token knows
-the bar it is in and its tick position within the bar, both derived deterministically
-from the token stream (see `tokenizer.metric_positions`).
+over the token index (RoPE), rotary embeddings over *musical time* (metric RoPE) or
+nothing, and can be supplemented by *metric embeddings*: each token knows the bar it
+is in and its tick position within the bar. All of this is derived deterministically
+from the token stream (see `tokenizer.metric_info`).
+
+Metric RoPE rotates queries and keys by the token's absolute tick position. The first
+METRIC_BANDS frequency pairs complete one rotation per eighth note, beat, two beats,
+bar, 2, 4, 8 and 16 bars of the sequence's own meter, so attention has a built-in
+metronome and "same beat, previous bar" is a fixed rotation regardless of how many
+tokens lie in between. The remaining pairs form the usual geometric series over
+eighth-note time.
 
 Two layouts are available. `stack` is a plain GPT stack. `looped` runs a prelude, then
 a small core block group several times with shared weights (a learned per-iteration
@@ -31,7 +39,7 @@ class ModelConfig:
     d_ff: int = 1024
     max_len: int = 1024
     dropout: float = 0.2
-    pos_encoding: str = "learned"  # learned | rope | none
+    pos_encoding: str = "learned"  # learned | rope | metric_rope | none
     metric_emb: bool = True
     arch: str = "stack"  # stack | looped
     n_prelude: int = 1
@@ -50,13 +58,35 @@ def _rope_cache(max_len: int, head_dim: int, device, base: float = 10000.0) -> t
     return emb.cos(), emb.sin()
 
 
+METRIC_BANDS = 8
+TICKS_PER_EIGHTH = 12
+
+
+def metric_rope_angles(abs_ticks: torch.Tensor, beat_ticks: torch.Tensor, bar_ticks: torch.Tensor,
+                       head_dim: int, base: float = 10000.0) -> torch.Tensor:
+    """Rotation angles (B, T, head_dim) from musical time. Bands 0..7 are meter-locked
+    periods (eighth, beat, 2 beats, bar, 2/4/8/16 bars); the rest is geometric over
+    eighth-note units."""
+    n_pairs = head_dim // 2
+    t = abs_ticks.float()  # (B, T)
+    beat = beat_ticks.float().unsqueeze(1)  # (B, 1)
+    bar = bar_ticks.float().unsqueeze(1)
+    periods = torch.stack([beat / 2, beat, 2 * beat, bar, 2 * bar, 4 * bar, 8 * bar, 16 * bar], dim=-1)  # (B, 1, 8)
+    metric = 2 * math.pi * t.unsqueeze(-1) / periods  # (B, T, 8)
+    n_geo = n_pairs - METRIC_BANDS
+    inv = 1.0 / (base ** (torch.arange(0, n_geo, device=t.device).float() / n_geo))
+    geo = (t / TICKS_PER_EIGHTH).unsqueeze(-1) * inv  # (B, T, n_geo)
+    ang = torch.cat([metric, geo], dim=-1)  # (B, T, n_pairs)
+    return torch.cat([ang, ang], dim=-1)  # (B, T, head_dim)
+
+
 def _rotate_half(x: torch.Tensor) -> torch.Tensor:
     x1, x2 = x.chunk(2, dim=-1)
     return torch.cat([-x2, x1], dim=-1)
 
 
 def _apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
-    # x: (B, H, T, D); cos/sin: (T, D)
+    # x: (B, H, T, D); cos/sin: (T, D) or (B, 1, T, D)
     return x * cos + _rotate_half(x) * sin
 
 
@@ -72,7 +102,7 @@ class Block(nn.Module):
         self.drop = nn.Dropout(cfg.dropout)
         self.n_head = cfg.n_head
         self.attn_dropout = cfg.dropout
-        self.rope = cfg.pos_encoding == "rope"
+        self.rope = cfg.pos_encoding in ("rope", "metric_rope")
         # sandwich norm: also normalise each branch output before the residual add
         self.post1 = nn.LayerNorm(cfg.d_model) if cfg.sandwich_norm else nn.Identity()
         self.post2 = nn.LayerNorm(cfg.d_model) if cfg.sandwich_norm else nn.Identity()
@@ -85,8 +115,10 @@ class Block(nn.Module):
         v = v.view(b, t, self.n_head, d // self.n_head).transpose(1, 2)
         if self.rope and rope is not None:
             cos, sin = rope
-            q = _apply_rope(q, cos[:t], sin[:t])
-            k = _apply_rope(k, cos[:t], sin[:t])
+            if cos.dim() == 2:  # token-index RoPE: shared table
+                cos, sin = cos[:t], sin[:t]
+            q = _apply_rope(q, cos, sin)
+            k = _apply_rope(k, cos, sin)
         y = F.scaled_dot_product_attention(q, k, v, is_causal=True,
                                            dropout_p=self.attn_dropout if self.training else 0.0)
         y = y.transpose(1, 2).contiguous().view(b, t, d)
@@ -133,8 +165,10 @@ class MelodyModel(nn.Module):
         elif isinstance(m, nn.Embedding):
             nn.init.normal_(m.weight, mean=0.0, std=0.02)
 
-    def forward(self, idx: torch.Tensor, bars: torch.Tensor | None = None,
-                ticks: torch.Tensor | None = None, loops: int | None = None) -> torch.Tensor:
+    def forward(self, idx: torch.Tensor, metric: dict[str, torch.Tensor] | None = None,
+                loops: int | None = None) -> torch.Tensor:
+        """`metric` holds per-token musical time from `tokenizer.metric_info`, stacked:
+        bars, ticks (B, T) long; abs (B, T) long; beat, bar (B,) long."""
         b, t = idx.shape
         if t > self.cfg.max_len:
             raise ValueError(f"sequence length {t} exceeds max_len {self.cfg.max_len}")
@@ -142,11 +176,18 @@ class MelodyModel(nn.Module):
         if self.pos is not None:
             x = x + self.pos(torch.arange(t, device=idx.device))
         if self.cfg.metric_emb:
-            if bars is None or ticks is None:
-                raise ValueError("metric_emb model needs bars and ticks")
-            x = x + self.bar_emb(bars.clamp(max=MAX_BAR_INDEX)) + self.tick_emb(ticks)
+            if metric is None:
+                raise ValueError("metric_emb model needs metric positions")
+            x = x + self.bar_emb(metric["bars"].clamp(max=MAX_BAR_INDEX)) + self.tick_emb(metric["ticks"])
         x = self.drop(x)
-        rope = (self.rope_cos, self.rope_sin) if self.cfg.pos_encoding == "rope" else None
+        rope = None
+        if self.cfg.pos_encoding == "rope":
+            rope = (self.rope_cos, self.rope_sin)
+        elif self.cfg.pos_encoding == "metric_rope":
+            if metric is None:
+                raise ValueError("metric_rope model needs metric positions")
+            ang = metric_rope_angles(metric["abs"], metric["beat"], metric["bar"], self.cfg.d_model // self.cfg.n_head)
+            rope = (ang.cos().unsqueeze(1).to(x.dtype), ang.sin().unsqueeze(1).to(x.dtype))
         if self.cfg.arch == "looped":
             for blk in self.prelude:
                 x = blk(x, rope)

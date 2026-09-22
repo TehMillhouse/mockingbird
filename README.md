@@ -34,14 +34,21 @@ https://github.com/OpenScore/Lieder data/external/Lieder`) and the build picks i
 Its MuseScore files are read directly with the `ms3` package; the ~180 MuseScore 2
 files in the corpus are skipped.
 
+PDMX (public-domain MuseScore uploads, CC BY 4.0) is the second optional extra: put
+`PDMX.csv` and `mxl.tar.gz` from the Zenodo record into `data/external/pdmx/` and run
+`uv run mb data prepare-pdmx`, which selects vocal scores (lyrics, no license
+conflict, deduplicated, classical or religious genre) and extracts only those.
+
 | Source | Style tag | What is used |
 | --- | --- | --- |
 | Essen Folksong Collection (European files; the Chinese `han*` files are skipped) | `folk` | whole tunes |
 | Bach chorales | `chorale` | soprano line |
 | Palestrina masses, Monteverdi madrigals, Josquin | `renaissance` | top voice |
 | OpenScore Lieder (1,300 songs, CC0) | `lied` | vocal staff |
+| PDMX vocal subset (~17,000 hymns, part-songs, madrigals, anthems) | `choral` | highest part with lyrics |
 
-Extraction picks the top vocal part, merges bars that the source split around repeat
+Extraction picks the top vocal part (the highest part carrying lyrics, else by part
+name, else the highest non-instrumental part), merges bars that the source split around repeat
 signs, halves old-notation meters (4/2 becomes 4/4), ends a section at any bar with
 tuplets, drops unsupported meters, and trims rest-only bars (piano intros) from the
 ends of every window. The key is read from the final of the lowest voice (melody

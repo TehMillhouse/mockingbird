@@ -17,13 +17,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .schema import Note, Phrase
-from .theory import DURATIONS, METERS, PITCH_MAX, PITCH_MIN, bar_ticks
+from .theory import DURATIONS, METERS, PITCH_MAX, PITCH_MIN, bar_ticks, beat_ticks
 
 PAD, BOS, EOS, BAR, TIE, REST, PICKUP = "PAD", "BOS", "EOS", "BAR", "TIE", "REST", "PICKUP"
 COUNTDOWN = 4
 REMAIN = tuple(f"REMAIN_{k}" for k in range(1, COUNTDOWN + 1))
 MODES = ("major", "minor")
-STYLES = ("folk", "chorale", "renaissance", "lied")
+STYLES = ("folk", "chorale", "renaissance", "lied", "choral")
 RANGES = ("S", "A", "T", "B")
 DIFFICULTIES = (1, 2, 3, 4, 5)
 
@@ -246,47 +246,86 @@ def _build_token_tables() -> tuple[list[int], list[int], dict[int, int]]:
 
 
 _KIND, _DURVAL, _METER_BT = _build_token_tables()
+_METER_BEAT = {t: beat_ticks(VOCAB[t].removeprefix("METER_").replace("_", "/")) for t in _METER_BT}
+
+
+@dataclass
+class Metric:
+    """Per-token musical time, derived from the stream itself.
+
+    bars: bar index (pickup bar = 0); tick_class: position within the bar in 3-tick
+    steps, BAR_LINE_CLASS on a BAR token; abs_ticks: ticks since the start of the first
+    full bar (the pickup bar counts backwards from 0 once its length is known, so the
+    downbeat phase is right everywhere). beat_ticks/bar_ticks describe the meter."""
+    bars: list[int]
+    tick_class: list[int]
+    abs_ticks: list[int]
+    beat_ticks: int
+    bar_ticks: int
 
 
 def metric_positions(tokens: list[int]) -> tuple[list[int], list[int]]:
-    """Per-token (bar index, tick class) derived from the stream itself.
+    m = metric_info(tokens)
+    return m.bars, m.tick_class
+
+
+def metric_info(tokens: list[int]) -> Metric:
+    """Replay the stream and assign musical time to every token.
 
     Prefix tokens sit at bar 0, tick 0. A note or rest token and its duration token
     carry the note's start position; TIE, REMAIN and EOS carry the current position;
-    BAR carries the bar it closes with the special bar-line tick class. The pickup bar,
-    if any, counts as bar 0 with ticks counted from its own start."""
+    BAR carries the bar it closes with the special bar-line tick class."""
     n = len(tokens)
     bars = [0] * n
-    ticks = [0] * n
+    classes = [0] * n
+    abs_t = [0] * n
     bar = 0
     pos = 0
     start_pos = 0
     bt = 0
+    beat = 24
     max_tick = BAR_LINE_CLASS - 1
+    has_pickup = n > PREFIX_LEN and tokens[PREFIX_LEN] == TOKEN_TO_ID[PICKUP]
+    pickup_len = 0
+    if has_pickup:  # look ahead: the pickup bar ends at the first BAR
+        t_acc = 0
+        for t in tokens[PREFIX_LEN + 1:]:
+            k = _KIND[t]
+            if k == 1:
+                break
+            if k == 2:
+                t_acc += _DURVAL[t]
+        pickup_len = t_acc
     for i in range(n):
         t = tokens[i]
         k = _KIND[t]
         if k == 0 and (i < PREFIX_LEN or VOCAB[t] == PICKUP):
             if t in _METER_BT:
                 bt = _METER_BT[t]
+                beat = _METER_BEAT[t]
             continue  # bar 0, tick 0
         b = bar if bar < MAX_BAR_INDEX else MAX_BAR_INDEX
         bars[i] = b
+        # in-bar offset: a pickup bar is aligned to its end
+        shift = (bt - pickup_len) if (has_pickup and bar == 0 and bt) else 0
         if k == 1:
-            ticks[i] = BAR_LINE_CLASS
+            classes[i] = BAR_LINE_CLASS
+            abs_t[i] = bar * bt + (shift + pos if bt else 0) - (bt if has_pickup else 0)
             bar += 1
             pos = 0
         elif k == 2:
-            c = start_pos // TICK_STEP
-            ticks[i] = c if c < max_tick else max_tick
+            c = (start_pos + shift) // TICK_STEP
+            classes[i] = c if c < max_tick else max_tick
+            abs_t[i] = bar * bt + start_pos + shift - (bt if has_pickup else 0)
             pos += _DURVAL[t]
             if bt and pos > bt:
                 pos = bt  # malformed stream: stay at the bar line
         else:
             start_pos = pos
-            c = pos // TICK_STEP
-            ticks[i] = c if c < max_tick else max_tick
-    return bars, ticks
+            c = (pos + shift) // TICK_STEP
+            classes[i] = c if c < max_tick else max_tick
+            abs_t[i] = bar * bt + pos + shift - (bt if has_pickup else 0)
+    return Metric(bars, classes, abs_t, beat, bt or 96)
 
 
 def merge_ties(notes: list[Note]) -> list[Note]:

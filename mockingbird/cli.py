@@ -12,7 +12,7 @@ app.add_typer(data_app, name="data")
 
 @data_app.command("build")
 def data_build(
-    sources: list[str] = typer.Option(["essen", "bach", "palestrina", "monteverdi", "josquin", "lieder"],
+    sources: list[str] = typer.Option(["essen", "bach", "palestrina", "monteverdi", "josquin", "lieder", "pdmx"],
                                       "--source", "-s"),
     out: Path = Path("data/processed"),
     workers: int = 6,
@@ -22,6 +22,14 @@ def data_build(
     from .data.build import build
 
     build(sources, out_dir=out, workers=workers, limit=limit)
+
+
+@data_app.command("prepare-pdmx")
+def data_prepare_pdmx():
+    """Select vocal scores from PDMX.csv and extract their MusicXML from mxl.tar.gz."""
+    from .data.pdmx import prepare
+
+    prepare()
 
 
 @app.command()
@@ -34,7 +42,7 @@ def train(
     n_layer: int = 6,
     d_model: int = 256,
     dropout: float = 0.2,
-    pos: str = typer.Option("learned", help="learned | rope | none"),
+    pos: str = typer.Option("learned", help="learned | rope | metric_rope | none"),
     metric_emb: bool = True,
     arch: str = typer.Option("stack", help="stack | looped"),
     loop_center: int = 3,

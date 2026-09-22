@@ -13,7 +13,7 @@ TICKS_PER_QUARTER = 24
 
 Mode = Literal["major", "minor"]
 Voice = Literal["S", "A", "T", "B"]
-Style = Literal["folk", "chorale", "renaissance", "lied"]
+Style = Literal["folk", "chorale", "renaissance", "lied", "choral"]
 
 # Meters supported by the tokenizer. Source meters with a denominator below 4 (4/2, 3/1,
 # 2/2 ...) are halved until the denominator is 4 and the note values scaled with them;

@@ -102,19 +102,34 @@ class PhraseDataset:
             self.rng.shuffle(out)
         return out
 
-    def collate(self, batch: list[int], max_len: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Token ids plus per-token bar index and tick class (for metric embeddings)."""
+    def collate(self, batch: list[int], max_len: int) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """Token ids plus per-token musical time (see `tokenizer.metric_info`)."""
         seqs = [self.encode(i)[:max_len] for i in batch]
-        t = max(len(s) for s in seqs)
-        x = torch.full((len(seqs), t), tk.tid(tk.PAD), dtype=torch.long)
-        bars = torch.zeros((len(seqs), t), dtype=torch.long)
-        ticks = torch.zeros((len(seqs), t), dtype=torch.long)
-        for r, s in enumerate(seqs):
-            x[r, :len(s)] = torch.tensor(s)
-            b, k = tk.metric_positions(s)
-            bars[r, :len(s)] = torch.tensor(b)
-            ticks[r, :len(s)] = torch.tensor(k)
-        return x, bars, ticks
+        return collate_tokens(seqs)
+
+
+def collate_tokens(seqs: list[list[int]]) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    t = max(len(s) for s in seqs)
+    x = torch.full((len(seqs), t), tk.tid(tk.PAD), dtype=torch.long)
+    bars = torch.zeros((len(seqs), t), dtype=torch.long)
+    ticks = torch.zeros((len(seqs), t), dtype=torch.long)
+    abs_t = torch.zeros((len(seqs), t), dtype=torch.long)
+    beat = torch.full((len(seqs),), 24, dtype=torch.long)
+    bar = torch.full((len(seqs),), 96, dtype=torch.long)
+    for r, s in enumerate(seqs):
+        x[r, :len(s)] = torch.tensor(s)
+        m = tk.metric_info(s)
+        bars[r, :len(s)] = torch.tensor(m.bars)
+        ticks[r, :len(s)] = torch.tensor(m.tick_class)
+        abs_t[r, :len(s)] = torch.tensor(m.abs_ticks)
+        beat[r] = m.beat_ticks
+        bar[r] = m.bar_ticks
+    return x, {"bars": bars, "ticks": ticks, "abs": abs_t, "beat": beat, "bar": bar}
+
+
+def shift_metric(metric: dict[str, torch.Tensor], device: str) -> dict[str, torch.Tensor]:
+    """Drop the last position (targets are shifted by one) and move to the device."""
+    return {k: (v[:, :-1] if v.dim() == 2 else v).to(device) for k, v in metric.items()}
 
 
 def loss_fn(logits: torch.Tensor, targets: torch.Tensor, smoothing: float) -> torch.Tensor:
@@ -128,9 +143,10 @@ def evaluate(model: MelodyModel, ds: PhraseDataset, cfg: TrainConfig) -> dict[st
     tot = defaultdict(float)
     cnt = defaultdict(int)
     for batch in ds.batches(cfg.batch_size, shuffle=False):
-        x, bars, ticks = (m.to(cfg.device) for m in ds.collate(batch, model.cfg.max_len))
+        x, metric = ds.collate(batch, model.cfg.max_len)
+        x = x.to(cfg.device)
         with torch.autocast(cfg.device, dtype=torch.bfloat16, enabled=cfg.device == "cuda"):
-            logits = model(x[:, :-1], bars[:, :-1], ticks[:, :-1])
+            logits = model(x[:, :-1], shift_metric(metric, cfg.device))
         nll = F.cross_entropy(logits.float().reshape(-1, logits.size(-1)), x[:, 1:].reshape(-1),
                               ignore_index=tk.tid(tk.PAD), reduction="none").view(x.size(0), -1)
         mask = (x[:, 1:] != tk.tid(tk.PAD)).float()
@@ -203,11 +219,12 @@ def train(cfg: TrainConfig, mcfg: ModelConfig | None = None) -> Path:
             model.train()
             t0, tot_loss, n_batches = time.time(), 0.0, 0
             for batch in train_ds.batches(cfg.batch_size, shuffle=True):
-                x, bars, ticks = (m.to(cfg.device) for m in train_ds.collate(batch, mcfg.max_len))
+                x, metric = train_ds.collate(batch, mcfg.max_len)
+                x = x.to(cfg.device)
                 for g in opt.param_groups:
                     g["lr"] = lr_at(step)
                 with torch.autocast(cfg.device, dtype=torch.bfloat16, enabled=cfg.device == "cuda"):
-                    logits = model(x[:, :-1], bars[:, :-1], ticks[:, :-1], loops=model.sample_loops())
+                    logits = model(x[:, :-1], shift_metric(metric, cfg.device), loops=model.sample_loops())
                 loss = loss_fn(logits.float(), x[:, 1:], cfg.label_smoothing)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()

@@ -7,6 +7,7 @@ import torch
 
 from .. import tokenizer as tk
 from ..model import MelodyModel
+from ..train import collate_tokens
 
 MaskFn = Callable[[int, list[int]], torch.Tensor | None]
 
@@ -38,13 +39,12 @@ def sample(model: MelodyModel, prefix: list[int], *, n: int, max_new: int, devic
     for _ in range(max_new):
         if all(done) or x.size(1) >= model.cfg.max_len:
             break
-        bars = ticks = None
-        if model.cfg.metric_emb:
-            pos = [tk.metric_positions(row) for row in x.tolist()]  # rows are PAD-extended after EOS
-            bars = torch.tensor([p[0] for p in pos], dtype=torch.long, device=device)
-            ticks = torch.tensor([p[1] for p in pos], dtype=torch.long, device=device)
+        metric = None
+        if model.cfg.metric_emb or model.cfg.pos_encoding == "metric_rope":
+            _, metric = collate_tokens(x.tolist())  # rows are PAD-extended after EOS
+            metric = {k: v.to(device) for k, v in metric.items()}
         with torch.autocast(device, dtype=torch.bfloat16, enabled=device == "cuda"):
-            logits = model(x, bars, ticks)[:, -1, :].float()
+            logits = model(x, metric)[:, -1, :].float()
         logits = logits / max(temperature, 1e-4)
         if mask_fn is not None:
             for r in range(n):

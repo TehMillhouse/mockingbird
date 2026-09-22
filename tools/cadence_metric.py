@@ -76,7 +76,7 @@ def main() -> None:
 
     gen = LevelGenerator(args.model, thresholds_path=Path("models/difficulty_thresholds.json"))
     rows = []
-    styles = ["folk", "chorale", "lied", "renaissance"]
+    styles = ["folk", "chorale", "lied", "choral"]
     for seed in range(args.levels):
         req = GenerateRequest(tonic="C", mode="major" if seed % 2 == 0 else "minor",
                               meter="4/4" if seed % 3 else "3/4", voice="S",
