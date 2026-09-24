@@ -3,9 +3,10 @@
 Labels (also the CAD_* tokens the model is trained on):
   PAC     ends on the tonic chord with the melody on the tonic
   IAC     ends on the tonic chord with the melody on the third or fifth
-  HC      half cadence: ends on the dominant
-  DEC     deceptive: dominant -> submediant
-  OTHER   anything else
+  HC      half cadence: ends on the dominant (or an applied dominant)
+  SUB     ends on subdominant harmony (IV, ii and their minor-mode forms)
+  DEC     ends on the submediant (deceptive when a dominant precedes it)
+  OTHER   anything else, mostly chromatic or modal finals
 The rule is deliberately simple so labels are consistent across corpora; whether an
 explicit dominant precedes the tonic is left for the model to learn from the notes.
 """
@@ -15,9 +16,10 @@ from ..schema import Note
 from ..theory import scale_degree
 from .viterbi import harmonize
 
-LABELS = ("PAC", "IAC", "HC", "DEC", "OTHER")
+LABELS = ("PAC", "IAC", "HC", "SUB", "DEC", "OTHER")
 TONIC = {"I", "i"}
 DOMINANT = {"V", "V7", "vii°"}
+SUBDOMINANT = {"IV", "iv", "ii", "ii°"}
 SUBMEDIANT = {"vi", "VI"}
 
 
@@ -38,9 +40,11 @@ def classify(notes: list[Note], meter: str, mode: str, pickup_ticks: int = 0) ->
         if degree in (3, 5):
             return "IAC"
         return "OTHER"
-    if last in DOMINANT:
+    if last in DOMINANT or last.startswith("V/"):
         return "HC"
-    if last in SUBMEDIANT and prev in DOMINANT:
+    if last in SUBDOMINANT:
+        return "SUB"
+    if last in SUBMEDIANT:
         return "DEC"
     return "OTHER"
 

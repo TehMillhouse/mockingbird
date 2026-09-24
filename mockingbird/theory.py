@@ -65,10 +65,14 @@ def frame_offset(tonic: str, mode: str) -> int:
 
 
 def scale_degree(frame_pitch: int, mode: str) -> int | None:
-    """1-based scale degree in the frame, or None for a non-diatonic pitch class."""
+    """1-based scale degree in the frame, or None for a non-diatonic pitch class. In
+    minor the raised sixth and seventh count as degrees 6 and 7."""
     pc = (frame_pitch - frame_tonic_pc(mode)) % 12
-    steps = (0, 2, 4, 5, 7, 9, 11) if mode == "major" else (0, 2, 3, 5, 7, 8, 10)
-    return steps.index(pc) + 1 if pc in steps else None
+    if mode == "major":
+        steps = (0, 2, 4, 5, 7, 9, 11)
+        return steps.index(pc) + 1 if pc in steps else None
+    table = {0: 1, 2: 2, 3: 3, 5: 4, 7: 5, 8: 6, 9: 6, 10: 7, 11: 7}
+    return table.get(pc)
 
 
 def is_diatonic(frame_pitch: int, mode: str, allow_raised: bool = True) -> bool:
