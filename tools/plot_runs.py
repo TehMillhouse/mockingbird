@@ -37,7 +37,7 @@ def render(runs: list[Path], title: str) -> str:
     def sy(v: float) -> float:
         return MT + (hi - min(max(v, lo), hi)) / (hi - lo) * ph
 
-    parts = [f'<svg viewBox="0 0 {W} {H}" width="{W}" height="{H}" font-family="system-ui, sans-serif" font-size="12">']
+    parts = [f'<svg viewBox="0 0 {W} {H}" preserveAspectRatio="xMidYMid meet" font-family="system-ui, sans-serif" font-size="12">']
     parts.append(f'<rect width="{W}" height="{H}" fill="var(--surface)"/>')
     parts.append(f'<text x="{ML}" y="20" font-size="14" font-weight="600" fill="var(--text)">{html.escape(title)}</text>')
     # grid and axes
@@ -91,7 +91,7 @@ def render(runs: list[Path], title: str) -> str:
 @media (prefers-color-scheme: dark) {{ :root:not([data-theme="light"]) {{ --surface:#1a1a19; --text:#fff; --text2:#c3c2b7; --grid:#33322f; }} }}
 body {{ background: var(--surface); color: var(--text); font-family: system-ui, sans-serif; margin: 16px; }}
 table {{ border-collapse: collapse; margin-top: 12px; font-size: 13px; }} td, th {{ padding: 4px 10px; border-bottom: 1px solid var(--grid); text-align: left; }}
-svg {{ max-width: 100%; height: auto; }}
+svg {{ width: 100%; height: auto; display: block; }}
 </style></head><body>
 {''.join(parts)}
 <table><tr><th>run</th><th>epochs</th><th>best epoch</th><th>best val NLL</th><th>final train loss</th></tr>{rows_html}</table>
