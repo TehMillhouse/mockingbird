@@ -69,8 +69,12 @@ Pitches are absolute MIDI numbers in the C/A frame, durations are ticks (24 per
 quarter), `BAR` closes every bar and `TIE` joins a note to the next. In windows that
 really contain the last bar of the source piece, each of the last four bars starts
 with a countdown token `REMAIN_4` … `REMAIN_1`, so the model learns how endings are
-prepared; generation forces the countdown at the requested bar count. The key tonic
-is never a token: it is applied on export. Difficulty buckets are calibrated to
+prepared; generation forces the countdown at the requested bar count. Phrase ends
+(from source phrase marks, fermatas, lyric punctuation, double bars and long rests)
+get the same treatment: `PHRASE_END_IN_4` … `PHRASE_END_IN_1` open the bars before a
+phrase end and `CAD_PAC|IAC|HC|DEC|OTHER` opens the bar containing it, so generation can
+request a phrase plan (`phrase_bars`, `cadences`). The key tonic is never a token: it
+is applied on export. Difficulty buckets are calibrated to
 quintiles of the training data per style (`models/difficulty_thresholds.json`).
 
 ### Model variants
