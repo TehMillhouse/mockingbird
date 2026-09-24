@@ -112,3 +112,19 @@ def test_final_note_must_be_longest_in_last_bar():
     assert _final_note_is_longest(ph([48, 48]))
     assert not _final_note_is_longest(ph([48, 12, 12, 12, 12]))
     assert not _final_note_is_longest(ph([24, 48, 24]))
+
+
+def test_phrase_plan_tokens_are_forced(tiny_model):
+    prefix = tk.prefix_tokens("major", "4/4", 2, "folk", "S")
+    state = ConstraintState(mode="major", meter="4/4", voice="S", difficulty=2, bars=8,
+                            phrase_bars=4, cadences=["HC", "PAC"])
+    seqs = sample(tiny_model, prefix, n=3, max_new=600, device="cpu", temperature=1.5,
+                  mask_fn=lambda r, toks: state.allowed(toks), seed=2)
+    for s in seqs:
+        names = [tk.VOCAB[t] for t in s]
+        assert [n for n in names if n.startswith("PHRASE_END")] == [f"PHRASE_END_IN_{k}" for k in (4, 3, 2, 1)] * 2
+        assert [n for n in names if n.startswith("CAD_")] == ["CAD_HC", "CAD_PAC"]
+        dec = tk.decode(s)
+        assert dec.complete_bars == 8 and dec.phrase.phrase_ends == [4 * 96, 8 * 96]
+        assert dec.phrase.cadences == ["HC", "PAC"]
+        assert tk.encode(dec.phrase, difficulty=2, range_bucket="S") == s

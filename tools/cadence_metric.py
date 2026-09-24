@@ -5,7 +5,9 @@
 For real endings in the validation set and for freshly generated levels it reports how
 often the last note is the tonic (or another stable degree), how often the final note
 is the longest in its bar, and how often the penultimate bar touches the leading tone
-or supertonic (dominant preparation).
+or supertonic (dominant preparation). For generated levels it also reports cadence
+compliance: how often each requested phrase cadence (HC for interior phrases, PAC for
+the last) is what the classifier finds in the output.
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ warnings.filterwarnings("ignore")
 from mockingbird import tokenizer as tk  # noqa: E402
 from mockingbird.data.segment import bars_of  # noqa: E402
 from mockingbird.schema import GenerateRequest, Phrase  # noqa: E402
+from mockingbird.harmonize.cadence import label_phrases  # noqa: E402
 from mockingbird.theory import frame_offset, scale_degree  # noqa: E402
 
 
@@ -76,6 +79,7 @@ def main() -> None:
 
     gen = LevelGenerator(args.model, thresholds_path=Path("models/difficulty_thresholds.json"))
     rows = []
+    compliance = Counter()
     styles = ["folk", "chorale", "lied", "choral"]
     for seed in range(args.levels):
         req = GenerateRequest(tonic="C", mode="major" if seed % 2 == 0 else "minor",
@@ -87,7 +91,20 @@ def main() -> None:
                        notes=[n.model_copy(update={"pitch": n.pitch - off if n.pitch is not None else None})
                               for n in level.melody])
         rows.append(cadence_features(frame))
+        bt = {"4/4": 96, "3/4": 72}[req.meter]
+        ends = [bt * req.phrase_bars * (i + 1) for i in range(req.bars // req.phrase_bars)]
+        requested = ["HC"] * (len(ends) - 1) + ["PAC"]
+        found = label_phrases(frame.notes, ends, req.meter, req.mode)
+        for want, got in zip(requested, found):
+            compliance[f"{want}->{got}"] += 1
+            compliance[f"{want} ok"] += want == got
+            compliance[f"{want} n"] += 1
     summarize(rows, "generated levels")
+    for want in ("HC", "PAC"):
+        n = compliance[f"{want} n"]
+        if n:
+            print(f"requested {want}: matched {100 * compliance[f'{want} ok'] / n:.0f}% of {n}; got "
+                  + ", ".join(f"{k.split('->')[1]} {v}" for k, v in sorted(compliance.items()) if k.startswith(want + "->")))
 
 
 if __name__ == "__main__":

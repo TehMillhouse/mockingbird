@@ -165,3 +165,25 @@ def test_metric_info_absolute_ticks_and_pickup_alignment():
     assert m.abs_ticks[p67] == -24 and m.tick_class[p67] == 72 // 3
     downbeat = names.index("BAR") + 1
     assert names[downbeat] == "P60" and m.abs_ticks[downbeat] == 0 and m.tick_class[downbeat] == 0
+
+
+def test_phrase_and_cadence_tokens_round_trip():
+    # two 2-bar phrases in 4/4: first ends HC, second PAC (piece end)
+    q = 24
+    notes = [Note(pitch=p, duration=q) for p in (60, 62, 64, 65, 67, 65, 64, 67, 60, 62, 64, 65, 67, 65, 62, 60)]
+    ph = Phrase(mode="major", meter="4/4", style="folk", difficulty=2, range_bucket="S", is_ending=True,
+                notes=notes, phrase_ends=[8 * q, 16 * q], cadences=["HC", "PAC"])
+    names = [tk.VOCAB[t] for t in tk.encode(ph)]
+    assert [n for n in names if n.startswith("PHRASE_END")] == ["PHRASE_END_IN_2", "PHRASE_END_IN_1",
+                                                                 "PHRASE_END_IN_2", "PHRASE_END_IN_1"]
+    assert [n for n in names if n.startswith("CAD_")] == ["CAD_HC", "CAD_PAC"]
+    # order at a bar start: REMAIN, PHRASE_END_IN, CAD
+    i = names.index("CAD_PAC")
+    assert names[i - 1] == "PHRASE_END_IN_1" and names[i - 2] == "REMAIN_1" and names[i - 3] == "BAR"
+    dec = tk.decode(tk.encode(ph))
+    assert dec.phrase.phrase_ends == [8 * q, 16 * q] and dec.phrase.cadences == ["HC", "PAC"]
+    assert dec.phrase.notes == ph.notes
+    # a window that stops mid-phrase carries no cadence for its end
+    mid = ph.model_copy(update={"is_ending": False, "phrase_ends": [8 * q], "cadences": ["HC"]})
+    names = [tk.VOCAB[t] for t in tk.encode(mid)]
+    assert [n for n in names if n.startswith("CAD_")] == ["CAD_HC"]

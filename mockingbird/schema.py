@@ -30,6 +30,8 @@ class Phrase(BaseModel):
     notes: list[Note]
     pickup_ticks: int = 0
     is_ending: bool = False  # the last bar is the last bar of the original piece
+    phrase_ends: list[int] = []  # tick offsets where phrases end (the last one is the total length)
+    cadences: list[str] = []  # cadence label per phrase end (see harmonize.cadence), same length
     range_bucket: Voice | None = None
     difficulty: int | None = None
     source: str = ""
@@ -80,5 +82,7 @@ class GenerateRequest(BaseModel):
     bars: int = Field(default=8, ge=1, le=32)
     style: Style | None = None
     accompaniment: str = "auto"  # auto | chorale | block | oompah | broken | none
+    phrase_bars: int = Field(default=4, ge=1, le=32)
+    cadences: list[str] | None = None  # per phrase, e.g. ["HC", "PAC"]; default HC..., PAC
     tempo_bpm: int = 80
     seed: int | None = None

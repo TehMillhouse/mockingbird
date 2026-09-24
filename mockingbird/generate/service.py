@@ -92,8 +92,12 @@ class LevelGenerator:
     def generate(self, req: GenerateRequest) -> Level:
         style = req.style or "folk"
         prefix = tk.prefix_tokens(req.mode, req.meter, req.difficulty, style, req.voice)
-        state = ConstraintState(mode=req.mode, meter=req.meter, voice=req.voice,
-                                difficulty=req.difficulty, bars=req.bars)
+        try:
+            state = ConstraintState(mode=req.mode, meter=req.meter, voice=req.voice,
+                                    difficulty=req.difficulty, bars=req.bars,
+                                    phrase_bars=req.phrase_bars, cadences=req.cadences)
+        except ValueError as e:
+            raise RuntimeError(str(e)) from e
         temperature = 0.9 if req.difficulty <= 2 else 1.0
         lo_s, hi_s = self.thresholds.bucket_range(req.difficulty, style)
         centre = (lo_s + hi_s) / 2

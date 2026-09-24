@@ -6,7 +6,9 @@ fits the singer's range after transposition, a per-difficulty leap cap, for the 
 easiest levels a diatonic-only pitch set, and a repeat limit: a bar that is identical
 (ties ignored) to one already sampled MAX_BAR_REPEATS times cannot be completed again.
 The REMAIN_k countdown is forced at the start of each of the last bars and forbidden
-elsewhere, so every level ends the way the training pieces end.
+elsewhere, so every level ends the way the training pieces end. A phrase plan (bars per
+phrase and a cadence label per phrase) is forced the same way through PHRASE_END_IN_k
+and CAD_x tokens at bar starts, in the order REMAIN, PHRASE_END_IN, CAD.
 """
 from __future__ import annotations
 
@@ -23,8 +25,19 @@ SPAN_CAP = {1: 12, 2: 14, 3: 17, 4: 19, 5: 19}
 
 
 class ConstraintState:
-    def __init__(self, *, mode: str, meter: str, voice: str, difficulty: int, bars: int):
+    def __init__(self, *, mode: str, meter: str, voice: str, difficulty: int, bars: int,
+                 phrase_bars: int | None = None, cadences: list[str] | None = None):
         self.mode = mode
+        # phrase plan: last bar index (0-based) of each phrase and its cadence label
+        pb = phrase_bars or bars
+        ends = list(range(pb - 1, bars, pb))
+        if not ends or ends[-1] != bars - 1:
+            ends.append(bars - 1)
+        if cadences is None:
+            cadences = ["HC"] * (len(ends) - 1) + ["PAC"]
+        if len(cadences) != len(ends):
+            raise ValueError(f"plan has {len(ends)} phrases but {len(cadences)} cadence labels")
+        self.plan = list(zip(ends, cadences))
         self.bt = bar_ticks(meter)
         lo, hi = VOICE_RANGES[voice]
         self.span = min(hi - lo, SPAN_CAP[difficulty])
@@ -51,12 +64,18 @@ class ConstraintState:
         seen: Counter = Counter()
         partial: list[str] = []
         remain_done = False  # countdown token already emitted for the current bar
+        phrase_done = False
+        cad_done = False
         while i < len(names):
             t = names[i]
             if t.startswith("REMAIN_"):
                 remain_done = True
+            elif t.startswith("PHRASE_END_IN_"):
+                phrase_done = True
+            elif t.startswith("CAD_"):
+                cad_done = True
             elif t == tk.BAR:
-                remain_done = False
+                remain_done = phrase_done = cad_done = False
                 bars += 1
                 pos = 0
                 expect = "pitch"
@@ -79,18 +98,29 @@ class ConstraintState:
                 pos += int(t[1:])
                 expect = "after_dur"
             i += 1
-        return expect, pos, bars, last, lo, hi, seen, tuple(partial), remain_done
+        return expect, pos, bars, last, lo, hi, seen, tuple(partial), (remain_done, phrase_done, cad_done)
 
     def allowed(self, tokens: list[int]) -> torch.Tensor:
-        expect, pos, bars, last, lo, hi, seen, partial, remain_done = self._scan(tokens)
+        expect, pos, bars, last, lo, hi, seen, partial, flags = self._scan(tokens)
+        remain_done, phrase_done, cad_done = flags
         mask = torch.zeros(tk.VOCAB_SIZE, dtype=torch.bool)
         if bars >= self.target_bars:
             mask[tk.tid(tk.EOS)] = True
             return mask
+        at_bar_start = not partial and expect == "pitch"
         remaining = self.target_bars - bars
-        if remaining <= tk.COUNTDOWN and not partial and not remain_done and expect == "pitch":
+        if remaining <= tk.COUNTDOWN and at_bar_start and not remain_done:
             mask[tk.tid(f"REMAIN_{remaining}")] = True
             return mask
+        if at_bar_start:
+            end_bar, label = next(((e, c) for e, c in self.plan if e >= bars), self.plan[-1])
+            k = end_bar - bars + 1
+            if k <= tk.COUNTDOWN and not phrase_done:
+                mask[tk.tid(f"PHRASE_END_IN_{k}")] = True
+                return mask
+            if k == 1 and not cad_done:
+                mask[tk.tid(f"CAD_{label}")] = True
+                return mask
         if expect == "dur":
             room = self.bt - pos
             fitting = [(tid_, d) for tid_, d in self._dur_ids if d <= room]

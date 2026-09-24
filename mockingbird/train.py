@@ -76,7 +76,12 @@ class PhraseDataset:
                 start = rng.randint(first, len(bars) - 8)
                 notes = [n for b in bars[start:] for n in b]
                 if start > 0 and notes:
-                    ph = ph.model_copy(update={"notes": notes, "pickup_ticks": 0})
+                    removed = sum(n.duration for b in bars[:start] for n in b)
+                    kept = [(e, c) for e, c in zip(ph.phrase_ends, ph.cadences or [None] * len(ph.phrase_ends))
+                            if e - removed > 0]
+                    ph = ph.model_copy(update={"notes": notes, "pickup_ticks": 0,
+                                               "phrase_ends": [e - removed for e, _ in kept],
+                                               "cadences": [c for _, c in kept] if ph.cadences else []})
         if rng.random() < self.cfg.octave_shift_p:
             shift = rng.choice((-12, 12))
             ps = [n.pitch for n in ph.notes if n.pitch is not None]

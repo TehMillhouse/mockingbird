@@ -3,14 +3,17 @@
 Token stream layout:
 
     BOS MODE_x METER_x DIFF_x STYLE_x RANGE_x [PICKUP]
-    (P<midi> | REST) D<ticks> [TIE] ... BAR [REMAIN_k] ... EOS
+    (P<midi> | REST) D<ticks> [TIE] ... BAR [REMAIN_k] [PHRASE_END_IN_k] [CAD_x] ... EOS
 
 Bar lines are emitted whenever the cumulative duration reaches a bar boundary, so a
 well-formed stream never needs a note to cross a bar: `normalize` splits such notes
 into tied pieces beforehand and also splits durations that are not in the vocabulary.
 In phrases whose last bar is the last bar of the original piece, each of the last
 COUNTDOWN bars starts with REMAIN_k (k bars left including this one), so the model
-sees an ending approaching the way the source pieces do.
+sees an ending approaching the way the source pieces do. Every bar that lies within
+COUNTDOWN bars of a phrase end starts with PHRASE_END_IN_k, and the bar containing the
+phrase end additionally carries CAD_<label> (see harmonize.cadence), so phrase
+structure and cadence type are explicit for training and controllable at generation.
 """
 from __future__ import annotations
 
@@ -22,6 +25,9 @@ from .theory import DURATIONS, METERS, PITCH_MAX, PITCH_MIN, bar_ticks, beat_tic
 PAD, BOS, EOS, BAR, TIE, REST, PICKUP = "PAD", "BOS", "EOS", "BAR", "TIE", "REST", "PICKUP"
 COUNTDOWN = 4
 REMAIN = tuple(f"REMAIN_{k}" for k in range(1, COUNTDOWN + 1))
+PHRASE_END = tuple(f"PHRASE_END_IN_{k}" for k in range(1, COUNTDOWN + 1))
+CADENCES = ("PAC", "IAC", "HC", "DEC", "OTHER")
+CAD = tuple(f"CAD_{c}" for c in CADENCES)
 MODES = ("major", "minor")
 STYLES = ("folk", "chorale", "renaissance", "lied", "choral")
 RANGES = ("S", "A", "T", "B")
@@ -29,7 +35,7 @@ DIFFICULTIES = (1, 2, 3, 4, 5)
 
 
 def _build_vocab() -> list[str]:
-    toks = [PAD, BOS, EOS, BAR, TIE, REST, PICKUP, *REMAIN]
+    toks = [PAD, BOS, EOS, BAR, TIE, REST, PICKUP, *REMAIN, *PHRASE_END, *CAD]
     toks += [f"MODE_{m}" for m in MODES]
     toks += [f"METER_{m.replace('/', '_')}" for m in METERS]
     toks += [f"DIFF_{d}" for d in DIFFICULTIES]
@@ -119,10 +125,16 @@ def encode(phrase: Phrase, *, difficulty: int | None = None,
     bt = bar_ticks(phrase.meter)
     pos = (-phrase.pickup_ticks) % bt if phrase.pickup_ticks else 0
     countdown = _countdown_starts(phrase) if phrase.is_ending else {}
+    phrase_marks = _phrase_marks(phrase)
     total = 0
     for n in phrase.notes:
         if total in countdown:
             toks.append(tid(f"REMAIN_{countdown.pop(total)}"))
+        if total in phrase_marks:
+            k, label = phrase_marks.pop(total)
+            toks.append(tid(f"PHRASE_END_IN_{k}"))
+            if k == 1 and label is not None:
+                toks.append(tid(f"CAD_{label}"))
         total += n.duration
         if n.duration not in DURATIONS:
             raise ValueError(f"duration {n.duration} not in vocabulary; call normalize()")
@@ -143,6 +155,45 @@ def encode(phrase: Phrase, *, difficulty: int | None = None,
             pos = 0
     toks.append(tid(EOS))
     return toks
+
+
+def bar_starts(phrase: Phrase) -> list[int]:
+    """Tick offsets where bars start (the pickup bar is the first if present)."""
+    bt = bar_ticks(phrase.meter)
+    total = phrase.total_ticks()
+    starts = [0]
+    t = phrase.pickup_ticks if phrase.pickup_ticks else bt
+    while t < total:
+        starts.append(t)
+        t += bt
+    return starts
+
+
+def _phrase_marks(phrase: Phrase) -> dict[int, tuple[int, str | None]]:
+    """Map bar-start tick -> (bars until the phrase end incl. this one, cadence label
+    when that is 1) for bars within COUNTDOWN bars of a phrase end."""
+    if not phrase.phrase_ends:
+        return {}
+    starts = bar_starts(phrase)
+    labels = dict(zip(phrase.phrase_ends, phrase.cadences)) if phrase.cadences else {}
+
+    def bar_of(tick: int) -> int:  # index of the bar containing tick (tick exclusive end)
+        idx = 0
+        for i, s in enumerate(starts):
+            if s < tick:
+                idx = i
+        return idx
+
+    marks: dict[int, tuple[int, str | None]] = {}
+    ends = sorted(e for e in phrase.phrase_ends if e > 0)
+    for i, s in enumerate(starts):
+        nxt = next((e for e in ends if e > s), None)
+        if nxt is None:
+            continue
+        k = bar_of(nxt) - i + 1
+        if 1 <= k <= COUNTDOWN:
+            marks[s] = (k, labels.get(nxt) if k == 1 else None)
+    return marks
 
 
 def _countdown_starts(phrase: Phrase) -> dict[int, int]:
@@ -187,12 +238,22 @@ def decode(tokens: list[int], *, source: str = "") -> Decoded:
     first_bar_at: int | None = None
     total = 0
     is_ending = False
+    phrase_ends: list[int] = []
+    cadences: list[str] = []
+    pending_cad: str | None = None
     while i < len(names):
         t = names[i]
         if t == EOS:
             break
         if t.startswith("REMAIN_"):
             is_ending = True
+            i += 1
+            continue
+        if t.startswith("PHRASE_END_IN_"):
+            i += 1
+            continue
+        if t.startswith("CAD_"):
+            pending_cad = t.removeprefix("CAD_")
             i += 1
             continue
         if t == BAR:
@@ -202,6 +263,10 @@ def decode(tokens: list[int], *, source: str = "") -> Decoded:
                     bars += 1
             else:
                 bars += 1
+            if pending_cad is not None:  # the phrase ended in the bar just closed
+                phrase_ends.append(total)
+                cadences.append(pending_cad)
+                pending_cad = None
             pos = 0
             i += 1
             continue
@@ -222,7 +287,8 @@ def decode(tokens: list[int], *, source: str = "") -> Decoded:
         raise ValueError(f"unexpected token {t} at {i}")
     pickup = (first_bar_at % bt) if (has_pickup and first_bar_at is not None) else 0
     phrase = Phrase(mode=mode, meter=meter, style=style, notes=notes, pickup_ticks=pickup,
-                    is_ending=is_ending, range_bucket=rng, difficulty=difficulty, source=source)
+                    is_ending=is_ending, phrase_ends=phrase_ends, cadences=cadences,
+                    range_bucket=rng, difficulty=difficulty, source=source)
     return Decoded(phrase=phrase, complete_bars=bars, trailing_ticks=pos)
 
 
