@@ -132,6 +132,11 @@ GET  /                            preview page (abcjs playback: Space play/pause
 The level JSON (`mockingbird/schema.py`) is the renderer-independent contract for any
 future frontend.
 
+## History and backlog
+
+`docs/RETROSPECTIVE.md` records which ideas were tried, dropped or adopted, and lists
+untried ideas with the problem each one addresses.
+
 ## Layout
 
 ```
