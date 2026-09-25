@@ -96,7 +96,8 @@ measures endings.
 
 ### Generation
 
-The model (a 5M-parameter GPT-style decoder with metric embeddings) samples eight candidates under logit
+The model (a 1.8M-parameter looped decoder with metric RoPE and metric embeddings; see
+"Model variants") samples eight candidates under logit
 masks that guarantee the token grammar, exact bar fill, the requested bar count, a
 pitch span that fits the voice, a leap cap per difficulty and, for levels 1 and 2,
 diatonic pitches only. Candidates are scored with the difficulty function, checked
