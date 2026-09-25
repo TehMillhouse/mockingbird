@@ -95,7 +95,7 @@ class LevelGenerator:
         try:
             state = ConstraintState(mode=req.mode, meter=req.meter, voice=req.voice,
                                     difficulty=req.difficulty, bars=req.bars,
-                                    phrase_bars=req.phrase_bars, cadences=req.cadences)
+                                    phrase_bars=req.phrase_bars)
         except ValueError as e:
             raise RuntimeError(str(e)) from e
         temperature = 0.9 if req.difficulty <= 2 else 1.0
@@ -174,4 +174,5 @@ class LevelGenerator:
         return Level(id=uuid.uuid4().hex[:12], tonic=req.tonic, mode=req.mode, meter=req.meter,
                      voice=req.voice, difficulty=req.difficulty, bars=req.bars, tempo_bpm=req.tempo_bpm,
                      pickup_ticks=phrase.pickup_ticks, melody=melody, chords=chords, accompaniment=acc,
+                     phrase_ends=phrase.phrase_ends, cadences=phrase.cadences,
                      difficulty_score=difficulty.score(phrase), seed=req.seed)

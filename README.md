@@ -73,7 +73,8 @@ prepared; generation forces the countdown at the requested bar count. Phrase end
 (from source phrase marks, fermatas, lyric punctuation, double bars and long rests)
 get the same treatment: `PHRASE_END_IN_4` … `PHRASE_END_IN_1` open the bars before a
 phrase end and `CAD_PAC|IAC|HC|SUB|DEC|OTHER` opens the bar containing it, so generation can
-request a phrase plan (`phrase_bars`, `cadences`). The key tonic is never a token: it
+end a phrase every `phrase_bars` bars: the last phrase always closes with a perfect
+authentic cadence, interior cadence types are chosen by the model. The key tonic is never a token: it
 is applied on export. Difficulty buckets are calibrated to
 quintiles of the training data per style (`models/difficulty_thresholds.json`).
 

@@ -6,9 +6,11 @@ fits the singer's range after transposition, a per-difficulty leap cap, for the 
 easiest levels a diatonic-only pitch set, and a repeat limit: a bar that is identical
 (ties ignored) to one already sampled MAX_BAR_REPEATS times cannot be completed again.
 The REMAIN_k countdown is forced at the start of each of the last bars and forbidden
-elsewhere, so every level ends the way the training pieces end. A phrase plan (bars per
-phrase and a cadence label per phrase) is forced the same way through PHRASE_END_IN_k
-and CAD_x tokens at bar starts, in the order REMAIN, PHRASE_END_IN, CAD.
+elsewhere, so every level ends the way the training pieces end. Phrase ends every
+`phrase_bars` bars are forced the same way through PHRASE_END_IN_k and CAD_x tokens at
+bar starts, in the order REMAIN, PHRASE_END_IN, CAD. The last phrase is always a
+perfect authentic cadence; at interior phrase ends the model picks the cadence type
+itself from INTERIOR_CADENCES, unless explicit labels are passed.
 """
 from __future__ import annotations
 
@@ -22,6 +24,8 @@ from ..theory import PITCH_MAX, PITCH_MIN, VOICE_RANGES, bar_ticks, is_diatonic
 LEAP_CAP = {1: 5, 2: 7, 3: 9, 4: 12, 5: 24}
 MAX_BAR_REPEATS = 2
 SPAN_CAP = {1: 12, 2: 14, 3: 17, 4: 19, 5: 19}
+INTERIOR_CADENCES = ("PAC", "IAC", "HC", "SUB", "DEC")
+FINAL_CADENCE = "PAC"
 
 
 class ConstraintState:
@@ -33,11 +37,11 @@ class ConstraintState:
         ends = list(range(pb - 1, bars, pb))
         if not ends or ends[-1] != bars - 1:
             ends.append(bars - 1)
-        if cadences is None:
-            cadences = ["HC"] * (len(ends) - 1) + ["PAC"]
+        if cadences is None:  # None = let the model choose at that phrase end
+            cadences = [None] * (len(ends) - 1) + [FINAL_CADENCE]
         if len(cadences) != len(ends):
             raise ValueError(f"plan has {len(ends)} phrases but {len(cadences)} cadence labels")
-        self.plan = list(zip(ends, cadences))
+        self.plan: list[tuple[int, str | None]] = list(zip(ends, cadences))
         self.bt = bar_ticks(meter)
         lo, hi = VOICE_RANGES[voice]
         self.span = min(hi - lo, SPAN_CAP[difficulty])
@@ -119,7 +123,8 @@ class ConstraintState:
                 mask[tk.tid(f"PHRASE_END_IN_{k}")] = True
                 return mask
             if k == 1 and not cad_done:
-                mask[tk.tid(f"CAD_{label}")] = True
+                for c in ([label] if label is not None else INTERIOR_CADENCES):
+                    mask[tk.tid(f"CAD_{c}")] = True
                 return mask
         if expect == "dur":
             room = self.bt - pos

@@ -128,3 +128,19 @@ def test_phrase_plan_tokens_are_forced(tiny_model):
         assert dec.complete_bars == 8 and dec.phrase.phrase_ends == [4 * 96, 8 * 96]
         assert dec.phrase.cadences == ["HC", "PAC"]
         assert tk.encode(dec.phrase, difficulty=2, range_bucket="S") == s
+
+
+def test_default_plan_forces_final_pac_and_lets_model_choose_interior(tiny_model):
+    from mockingbird.generate.constraints import INTERIOR_CADENCES
+
+    prefix = tk.prefix_tokens("minor", "3/4", 2, "chorale", "A")
+    state = ConstraintState(mode="minor", meter="3/4", voice="A", difficulty=2, bars=12, phrase_bars=4)
+    seqs = sample(tiny_model, prefix, n=6, max_new=800, device="cpu", temperature=1.5,
+                  mask_fn=lambda r, toks: state.allowed(toks), seed=4)
+    interior = set()
+    for s in seqs:
+        cads = [tk.VOCAB[t].removeprefix("CAD_") for t in s if tk.VOCAB[t].startswith("CAD_")]
+        assert len(cads) == 3 and cads[-1] == "PAC"
+        assert all(c in INTERIOR_CADENCES for c in cads[:-1])
+        interior.update(cads[:-1])
+    assert len(interior) > 1  # interior cadences are sampled, not fixed

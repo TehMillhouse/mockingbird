@@ -6,8 +6,8 @@ For real endings in the validation set and for freshly generated levels it repor
 often the last note is the tonic (or another stable degree), how often the final note
 is the longest in its bar, and how often the penultimate bar touches the leading tone
 or supertonic (dominant preparation). For generated levels it also reports cadence
-compliance: how often each requested phrase cadence (HC for interior phrases, PAC for
-the last) is what the classifier finds in the output.
+compliance: how often the forced final PAC, and each interior cadence type the model
+chose, is what the classifier finds in the output.
 """
 from __future__ import annotations
 
@@ -91,20 +91,22 @@ def main() -> None:
                        notes=[n.model_copy(update={"pitch": n.pitch - off if n.pitch is not None else None})
                               for n in level.melody])
         rows.append(cadence_features(frame))
-        bt = {"4/4": 96, "3/4": 72}[req.meter]
-        ends = [bt * req.phrase_bars * (i + 1) for i in range(req.bars // req.phrase_bars)]
-        requested = ["HC"] * (len(ends) - 1) + ["PAC"]
-        found = label_phrases(frame.notes, ends, req.meter, req.mode)
-        for want, got in zip(requested, found):
-            compliance[f"{want}->{got}"] += 1
-            compliance[f"{want} ok"] += want == got
-            compliance[f"{want} n"] += 1
+        found = label_phrases(frame.notes, level.phrase_ends, req.meter, req.mode, level.pickup_ticks)
+        for i, (want, got) in enumerate(zip(level.cadences, found)):
+            pos = "final" if i == len(found) - 1 else "interior"
+            compliance[(pos, want, got)] += 1
     summarize(rows, "generated levels")
-    for want in ("HC", "PAC"):
-        n = compliance[f"{want} n"]
-        if n:
-            print(f"requested {want}: matched {100 * compliance[f'{want} ok'] / n:.0f}% of {n}; got "
-                  + ", ".join(f"{k.split('->')[1]} {v}" for k, v in sorted(compliance.items()) if k.startswith(want + "->")))
+    for pos in ("final", "interior"):
+        items = [(w, g, n) for (p, w, g), n in compliance.items() if p == pos]
+        total = sum(n for _, _, n in items)
+        if not total:
+            continue
+        ok = sum(n for w, g, n in items if w == g)
+        chosen = Counter()
+        for w, _, n in items:
+            chosen[w] += n
+        print(f"{pos} phrases: realised as intended {100 * ok / total:.0f}% of {total}; intended "
+              + ", ".join(f"{w} {n}" for w, n in chosen.most_common()))
 
 
 if __name__ == "__main__":

@@ -64,9 +64,11 @@ class Level(BaseModel):
     voice: Voice
     difficulty: int
     bars: int
-    tempo_bpm: int = 80
+    tempo_bpm: int = 100
     pickup_ticks: int = 0
     melody: list[Note]  # concert pitch
+    phrase_ends: list[int] = []  # tick offsets of phrase ends
+    cadences: list[str] = []  # cadence type chosen at each phrase end
     chords: list[Chord] = []
     accompaniment: list[AccompEvent] = []
     difficulty_score: float | None = None
@@ -83,6 +85,5 @@ class GenerateRequest(BaseModel):
     style: Style | None = None
     accompaniment: str = "auto"  # auto | chorale | block | oompah | broken | none
     phrase_bars: int = Field(default=4, ge=1, le=32)
-    cadences: list[str] | None = None  # per phrase, e.g. ["HC", "PAC"]; default HC..., PAC
-    tempo_bpm: int = 80
+    tempo_bpm: int = 100
     seed: int | None = None

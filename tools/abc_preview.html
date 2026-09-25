@@ -33,10 +33,9 @@
   <label>Difficulty <select name="difficulty"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option></select></label>
   <label>Bars <input name="bars" type="number" min="1" max="32" value="8" style="width:4rem"></label>
   <label>Phrase bars <input name="phrase_bars" type="number" min="1" max="32" value="4" style="width:4rem"></label>
-  <label>Cadences <input name="cadences" placeholder="HC,PAC" style="width:7rem" title="one of PAC, IAC, HC, SUB, DEC per phrase; empty = HC… PAC"></label>
   <label>Style <select name="style"><option value="folk">folk</option><option value="chorale">chorale</option><option value="renaissance">renaissance</option><option value="lied">lied</option><option value="choral">choral</option></select></label>
   <label>Accompaniment <select name="accompaniment"><option>auto</option><option>chorale</option><option>block</option><option>oompah</option><option>broken</option><option>none</option></select></label>
-  <label>Tempo <input name="tempo_bpm" type="number" min="30" max="200" value="80" style="width:4.5rem"></label>
+  <label>Tempo <input name="tempo_bpm" type="number" min="30" max="200" value="100" style="width:4.5rem"></label>
   <label>Seed <input name="seed" type="number" placeholder="random" style="width:5.5rem"></label>
   <button type="submit">Generate</button>
   <a id="midi" href="#" download hidden>Download MIDI</a>
@@ -111,7 +110,6 @@ async function generate() {
   const data = Object.fromEntries(new FormData(form).entries());
   ["difficulty", "bars", "tempo_bpm", "phrase_bars"].forEach(k => data[k] = parseInt(data[k]));
   if (data.seed === "") delete data.seed; else data.seed = parseInt(data.seed);
-  if (data.cadences.trim() === "") delete data.cadences; else data.cadences = data.cadences.split(",").map(s => s.trim().toUpperCase());
   status.textContent = "Generating…";
   const t0 = performance.now();
   const r = await fetch("/levels", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
