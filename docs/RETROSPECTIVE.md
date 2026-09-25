@@ -88,10 +88,15 @@ Question: positional encoding, model size, weight sharing.
   per-pass embedding, coda, sandwich norm): matches the 5M-parameter stack at 36% of the
   weights and beats a same-size plain stack by 0.022 nats. It trains longer before its
   curve flattens but has not exceeded the big model.
-- Open: an overnight run compares the production stack, the looped model and a
-  384-wide stack on long schedules (`models/overnight/chain.log`) to see where the
-  curves converge and whether the 5M model is undersized. No run so far has shown
-  overfitting; train loss stays above validation under dropout 0.2.
+- ☑️👍 Long-schedule study (150 epochs, early stopping off): the 4.8M stack bottomed
+  out at 0.820 by epoch 54 and then overfit (+0.021 by epoch 150); a 10.7M 384-wide
+  stack overfit sooner and reached only 0.827; the 1.8M looped model reached 0.820 at
+  epoch 125 and rose only 0.004 afterwards. Model size is not the limit on this
+  corpus, data is. Weight sharing acts as a regulariser: same floor, reached later,
+  far less overfitting. In a blind listening test the looped model and the 4.8M
+  stack were indistinguishable, so the looped model became production (8 MB instead
+  of 20 MB checkpoint).
+- ☑️👎 Larger models (384 wide): worse floor, faster overfitting.
 
 ## 6. Cadences as training signal
 
@@ -182,6 +187,11 @@ so that "level 3" means the same thing across styles. The sampler already enforc
 leap and span caps per level; the missing part is training-time labels on the same
 scale so the model produces idiomatic level-3 melodies rather than clipped level-5
 ones.
+
+### More data before more parameters
+The long-schedule study showed every size overfitting once it reaches about 0.820,
+so the next quality step, if any, comes from more or cleaner data (see "More
+classical vocal data") rather than from width or depth.
 
 ### Adaptive loop count at inference
 The looped model degrades gracefully around its training centre (1 pass 0.892, 2
