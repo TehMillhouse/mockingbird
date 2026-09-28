@@ -16,7 +16,10 @@ npm --prefix web run dev      # app on :5173, API routes proxied to :8000
 ```
 
 `npm --prefix web run build` writes `web/dist`. When that exists, `mb serve` serves it
-at `/`; otherwise `/` falls back to the abcjs preview page in `tools/`.
+at `/`; otherwise `/` falls back to the abcjs preview page in `tools/`. Setting
+`MOCKINGBIRD_WEB` points it at a built app elsewhere. Asset and API URLs are
+relative, so the app also works behind a proxy under a path prefix (see
+`DEPLOY.md`).
 
 ## Architecture
 

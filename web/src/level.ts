@@ -37,14 +37,15 @@ export interface LevelRequest {
 }
 
 export async function fetchLevel(req: LevelRequest): Promise<{ level: Level; abc: string }> {
-  const r = await fetch("/levels", {
+  // relative, so the app works under any path prefix
+  const r = await fetch("levels", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });
   if (!r.ok) throw new Error(await r.text());
   const level: Level = await r.json();
-  const abc = await (await fetch(`/levels/${level.id}/export?fmt=abc`)).text();
+  const abc = await (await fetch(`levels/${level.id}/export?fmt=abc`)).text();
   return { level, abc };
 }
 

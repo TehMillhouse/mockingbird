@@ -2,7 +2,7 @@
 name = "mockingbird"
 version = "0.1.0"
 description = "Sight-singing trainer: melody-level generation backend"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "torch>=2.7",
     "music21>=9.3",

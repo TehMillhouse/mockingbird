@@ -4,7 +4,9 @@
     GET  /levels/{id}                 Level JSON
     GET  /levels/{id}/export?fmt=abc|musicxml|midi
     GET  /health
-    GET  /                            the web app (web/dist) if built, else the abcjs preview page
+    GET  /                            the web app if built, else the abcjs preview page
+
+The web app is read from $MOCKINGBIRD_WEB, by default web/dist in the checkout.
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from ..schema import GenerateRequest, Level
 
 ROOT = Path(__file__).resolve().parents[2]
 PREVIEW_PAGE = ROOT / "tools" / "abc_preview.html"
-WEB_DIST = ROOT / "web" / "dist"
+WEB_DIST = Path(os.environ.get("MOCKINGBIRD_WEB", ROOT / "web" / "dist"))
 
 
 def create_app(model_path: Path | None = None) -> FastAPI:

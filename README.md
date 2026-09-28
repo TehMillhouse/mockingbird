@@ -28,6 +28,8 @@ uv run pytest
 
 `mb generate --out` also accepts `.musicxml`, `.mid` and `.json`.
 
+To run it on a server, see `docs/DEPLOY.md`.
+
 ### Training data
 
 The music21 corpora ship with the package. OpenScore Lieder is an optional extra:
