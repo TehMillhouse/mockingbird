@@ -4,8 +4,8 @@ Sight-singing trainer for a classical choir. This repository holds the
 level-generation backend (a small locally trained melody model, a rule-based
 harmonizer, exporters for ABC, MusicXML and MIDI, and an HTTP API) and a browser
 frontend in `web/` that shows and plays levels with a live mix and tempo and draws
-the singer's pitch over the notation. Latency calibration and scoring are designed
-but not built yet; see `docs/FRONTEND.md`.
+the singer's pitch over the notation, with latency calibration per device; see
+`docs/FRONTEND.md`.
 
 ## Setup
 

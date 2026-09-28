@@ -1,6 +1,7 @@
 import * as Tone from "tone";
 import { audioContext, canChooseOutput, setOutputDevice } from "./audio";
 import { DevicePicker } from "./devices";
+import { calibrateAv, calibrateRoundTrip, LatencyStore } from "./latency";
 import { fetchLevel, type LevelRequest } from "./level";
 import { Trace } from "./overlay";
 import { Mic } from "./pitch";
@@ -17,6 +18,7 @@ const readout = $<HTMLOutputElement>("#sung");
 const inputLevel = $<HTMLMeterElement>("#input-level");
 const inputPicker = new DevicePicker($("#input"), "audioinput", "mockingbird.input-device");
 const outputPicker = new DevicePicker($("#output"), "audiooutput", "mockingbird.output-device");
+const calibration = $<HTMLDialogElement>("#calibration");
 const sliders = {
   voice: $<HTMLInputElement>("#voice"),
   piano: $<HTMLInputElement>("#piano"),
@@ -28,6 +30,9 @@ const player = new Player(instruments);
 const score = new Score($("#paper"));
 const trace = new Trace();
 let mic: Mic | null = null;
+const latencies = new LatencyStore();
+/** Current offsets in seconds, from calibration or else the browser's estimates. */
+const latency = { av: 0, avCalibrated: false, roundTrip: 0, roundTripCalibrated: false };
 let loaded = false;
 let tempoTouched = false;
 
@@ -90,7 +95,7 @@ function nudge(slider: HTMLInputElement, delta: number): void {
 
 async function togglePlay(): Promise<void> {
   if (!loaded) return;
-  if (!player.playing && player.audibleTicks() === 0) trace.clear();
+  if (!player.playing && player.ticksAgo(0) === 0) trace.clear();
   await player.toggle();
 }
 
@@ -109,6 +114,7 @@ async function openMic(): Promise<void> {
     status.textContent = `Listening on ${mic.label}. Use headphones so the piano stays out of the mic.`;
     // device names are only readable once permission is granted
     await Promise.all([inputPicker.refresh(), outputPicker.refresh()]);
+    refreshLatency();
   } catch (e) {
     const reason = e instanceof DOMException && e.name === "NotAllowedError"
       ? "permission denied; allow the microphone for this page in the browser's site settings"
@@ -142,6 +148,49 @@ async function chooseOutput(): Promise<void> {
   } catch (e) {
     status.textContent = `Could not switch output: ${e instanceof Error ? e.message : e}`;
   }
+  refreshLatency();
+}
+
+function outputLabel(): string {
+  return canChooseOutput ? outputPicker.label : "System default";
+}
+
+function refreshLatency(): void {
+  const av = latencies.av(outputLabel());
+  latency.av = av ?? player.reportedOutputLatency;
+  latency.avCalibrated = av !== undefined;
+  const roundTrip = mic ? latencies.roundTrip(outputLabel(), mic.label) : undefined;
+  latency.roundTrip = roundTrip ?? player.reportedOutputLatency + (mic?.reportedLatency ?? 0);
+  latency.roundTripCalibrated = roundTrip !== undefined;
+  showLatency();
+}
+
+function showLatency(): void {
+  const ms = (s: number) => `${Math.round(s * 1000)} ms`;
+  $<HTMLOutputElement>("#cal-av-result").value =
+    `${ms(latency.av)} ${latency.avCalibrated ? "(calibrated)" : "(browser estimate)"}`;
+  $<HTMLOutputElement>("#cal-rt-result").value = mic
+    ? `${ms(latency.roundTrip)} ${latency.roundTripCalibrated ? "(calibrated)" : "(browser estimate)"}`
+    : "turn the microphone on first";
+}
+
+function progressTo(message: string): void {
+  $<HTMLParagraphElement>("#cal-progress").textContent = message;
+}
+
+async function runCalibration(button: HTMLButtonElement, run: () => Promise<void>): Promise<void> {
+  player.stop();
+  const buttons = calibration.querySelectorAll("button");
+  buttons.forEach(b => (b.disabled = true));
+  try {
+    await run();
+    progressTo("Saved.");
+  } catch (e) {
+    progressTo(`Calibration failed: ${e instanceof Error ? e.message : e}`);
+  }
+  buttons.forEach(b => (b.disabled = false));
+  button.focus();
+  refreshLatency();
 }
 
 const NOTE_NAMES = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
@@ -160,8 +209,8 @@ function showSung(midi: number | null): void {
 /** Place the sung pitch against the note that was sounding when it was sung. The
  *  singer follows what they hear, so its capture time is mapped back through both
  *  the input and the output latency. */
-function traceSung(sung: Mic, midi: number, time: number): void {
-  const ticks = player.heardTicksAt(time - sung.reportedLatency);
+function traceSung(midi: number, time: number): void {
+  const ticks = player.ticksAt(time - latency.roundTrip);
   const target = score.targetAt(ticks);
   if (!target) return;
   const off = midi - target.pitch;
@@ -178,11 +227,12 @@ function listen(): void {
   const { db, pitch } = mic.read();
   inputLevel.value = db;
   showSung(pitch?.midi ?? null);
-  if (pitch && loaded && player.playing) traceSung(mic, pitch.midi, pitch.time);
+  if (pitch && loaded && player.playing) traceSung(pitch.midi, pitch.time);
 }
 
 function frame(): void {
-  if (loaded) score.moveTo(player.audibleTicks());
+  // what is heard when this frame is seen was scheduled A − V ago
+  if (loaded) score.moveTo(player.ticksAgo(latency.av));
   playButton.textContent = player.playing ? "Pause" : "Play";
   requestAnimationFrame(frame);
 }
@@ -199,9 +249,23 @@ navigator.mediaDevices.addEventListener("devicechange", () => {
   outputPicker.refresh();
 });
 form.addEventListener("submit", e => { e.preventDefault(); newLevel(); });
+$("#calibrate").addEventListener("click", () => {
+  refreshLatency();
+  progressTo("Wear the headphones you sing with.");
+  calibration.showModal();
+});
+$("#cal-av").addEventListener("click", e => runCalibration(e.currentTarget as HTMLButtonElement, async () => {
+  latencies.saveAv(outputLabel(), await calibrateAv($("#flash"), progressTo));
+}));
+$("#cal-rt").addEventListener("click", e => runCalibration(e.currentTarget as HTMLButtonElement, async () => {
+  if (!mic) await openMic();
+  if (!mic) throw new Error("no microphone");
+  const sung = mic;
+  latencies.saveRoundTrip(outputLabel(), sung.label, await calibrateRoundTrip(sung, progressTo));
+}));
 
 document.addEventListener("keydown", e => {
-  if (e.target instanceof HTMLSelectElement || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (calibration.open || e.target instanceof HTMLSelectElement || e.ctrlKey || e.metaKey || e.altKey) return;
   const actions: Record<string, () => void> = {
     " ": togglePlay,
     r: restart,
@@ -226,6 +290,7 @@ restoreForm();
 if (!canChooseOutput) $("#output-choice").hidden = true;
 Promise.all([inputPicker.refresh(), outputPicker.refresh()]).then(() => {
   if (outputPicker.value) chooseOutput();
+  else refreshLatency();
 });
 applyVolume("voice");
 applyVolume("piano");

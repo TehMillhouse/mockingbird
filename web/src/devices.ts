@@ -16,6 +16,11 @@ export class DevicePicker {
     return this.select.value;
   }
 
+  /** The chosen device's name as listed. */
+  get label(): string {
+    return this.select.selectedOptions[0]?.text ?? "System default";
+  }
+
   /** The stored choice, before the device list is known. */
   get saved(): string {
     try {

@@ -65,6 +65,12 @@ export class Mic {
   }
 
   /** Level of the latest window in dBFS (RMS), and its pitch if it has a clear one. */
+  /** The latest window, and the AudioContext time its last sample belongs to. */
+  samples(): { data: Float32Array; end: number } {
+    this.analyser.getFloatTimeDomainData(this.buffer);
+    return { data: this.buffer, end: this.ctx.currentTime };
+  }
+
   read(): { db: number; pitch: PitchReading | null } {
     this.analyser.getFloatTimeDomainData(this.buffer);
     let sum = 0;

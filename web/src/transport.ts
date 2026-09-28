@@ -83,21 +83,21 @@ export class Player {
   }
 
   /** Output latency as the browser reports it; often missing or too low. */
-  get outputLatency(): number {
+  get reportedOutputLatency(): number {
     const raw = Tone.getContext().rawContext as AudioContext;
     return (raw.outputLatency || 0) + (raw.baseLatency || 0);
   }
 
-  /** The level tick reaching the speakers at an AudioContext time. */
-  heardTicksAt(time: number): number {
-    const ticks = this.transport.getTicksAtTime(time - this.outputLatency) / TONE_PER_LEVEL_TICK;
+  /** The level tick the transport was at at an AudioContext time. */
+  ticksAt(time: number): number {
+    const ticks = this.transport.getTicksAtTime(time) / TONE_PER_LEVEL_TICK;
     return Math.min(Math.max(ticks, 0), this.length);
   }
 
-  /** The level tick reaching the speakers now. */
-  audibleTicks(): number {
+  /** The level tick the transport was at `delay` seconds ago. */
+  ticksAgo(delay: number): number {
     if (!this.playing) return this.transport.ticks / TONE_PER_LEVEL_TICK;
-    return this.heardTicksAt(Tone.getContext().immediate());
+    return this.ticksAt(Tone.getContext().immediate() - delay);
   }
 }
 

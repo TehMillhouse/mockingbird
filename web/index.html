@@ -21,7 +21,7 @@
     <button type="submit">New level</button>
   </form>
   <div id="controls">
-    <label>Voice <input id="voice" type="range" min="0" max="100" value="100"><output for="voice"></output></label>
+    <label>Voice <input id="voice" type="range" min="0" max="100" value="50"><output for="voice"></output></label>
     <label>Piano <input id="piano" type="range" min="0" max="100" value="70"><output for="piano"></output></label>
     <label>Tempo <input id="tempo" type="range" min="40" max="200" value="100"><output for="tempo"></output></label>
     <button id="play" type="button" disabled>Play</button>
@@ -32,8 +32,26 @@
     <meter id="input-level" min="-80" max="0" low="-60" high="-6" optimum="-20" value="-80" hidden title="Input level"></meter>
     <output id="sung"></output>
     <label id="output-choice">Output <select id="output"></select></label>
+    <button id="calibrate" type="button">Calibrate</button>
   </div>
 </header>
+<dialog id="calibration">
+  <h2>Latency calibration</h2>
+  <p id="cal-progress"></p>
+  <section>
+    <h3>Picture and sound</h3>
+    <p>Lines the cursor up with what you hear. Tap <kbd>Space</kbd> (or the box) with each
+      click, then with each flash.</p>
+    <div id="flash">tap</div>
+    <p><button id="cal-av" type="button">Start</button> <output id="cal-av-result"></output></p>
+  </section>
+  <section>
+    <h3>Microphone</h3>
+    <p>Lines your pitch trace up with the notes. Clap with each click, close to the microphone.</p>
+    <p><button id="cal-rt" type="button">Start</button> <output id="cal-rt-result"></output></p>
+  </section>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
 <p id="status">Loading piano samples…</p>
 <main id="paper"></main>
 <footer>

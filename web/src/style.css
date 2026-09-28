@@ -28,5 +28,17 @@ button { cursor: pointer; }
 #paper .trace path { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 #paper .trace .hit { stroke: #15803d; }
 #paper .trace .miss { stroke: #d97706; }
+#calibration { max-width: 32rem; border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; }
+#calibration h2 { margin: 0 0 .5rem; font-size: 1.15rem; }
+#calibration h3 { margin: 1rem 0 .25rem; font-size: 1rem; }
+#calibration p { margin: .35rem 0; }
+#cal-progress { min-height: 2.6em; color: var(--muted); }
+#calibration output { color: var(--muted); font-size: .9rem; }
+#flash {
+  display: grid; place-items: center; height: 5rem; margin: .5rem 0; border-radius: 6px;
+  background: #e8e8e6; color: var(--muted); user-select: none; cursor: pointer;
+}
+#flash.lit { background: var(--accent); color: #fff; }
+#flash.lit.count-in { background: #9ca3af; }
 footer { margin-top: 1rem; font-size: .8rem; color: var(--muted); }
 kbd { background: #e8e8e6; border-radius: 3px; padding: 0 .3rem; font-size: .85em; }
