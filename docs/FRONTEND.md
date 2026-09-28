@@ -28,12 +28,22 @@ and separate stems for mixing.
 | Module | Role |
 |---|---|
 | `level.ts` | Level types (mirrors `schema.py`), fetching |
+| `audio.ts` | The shared AudioContext and output routing |
+| `devices.ts` | Input and output device pickers |
 | `synth.ts` | Voice guide (mono synth) and piano (sampled), each behind its own gain node |
 | `transport.ts` | Schedules the level on Tone.js's transport in ticks; tempo is the transport's BPM |
 | `score.ts` | abcjs rendering, the ticks → score-position map, the cursor, melody note heads |
 | `pitch.ts` | Microphone input and pitch detection |
 | `overlay.ts` | The pitch trace drawn into the score's SVG |
 | `main.ts` | Controls and keybinds |
+
+Output device choice needs `AudioContext.setSinkId`, which only the native context
+has, so where the browser supports it Tone.js runs on a native `AudioContext` instead
+of its default wrapper. Elsewhere (Firefox) the wrapper stays, because Tone depends
+on its polyfills there, and playback goes to the system default output. The input device
+is chosen through `getUserMedia`'s `deviceId`. Both choices are remembered per
+browser. Device names are only readable after microphone permission is granted, so
+the lists are refreshed once the mic opens.
 
 abcjs only draws; it never plays. Tone.js's 192 PPQ is exactly 8 of its ticks per level
 tick (24 per quarter), so every event lands on an exact transport tick. A tempo change

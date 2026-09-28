@@ -25,8 +25,13 @@
     <label>Piano <input id="piano" type="range" min="0" max="100" value="70"><output for="piano"></output></label>
     <label>Tempo <input id="tempo" type="range" min="40" max="200" value="100"><output for="tempo"></output></label>
     <button id="play" type="button" disabled>Play</button>
+  </div>
+  <div id="devices">
+    <label>Microphone <select id="input"></select></label>
     <button id="mic" type="button">Mic off</button>
+    <meter id="input-level" min="-80" max="0" low="-60" high="-6" optimum="-20" value="-80" hidden title="Input level"></meter>
     <output id="sung"></output>
+    <label id="output-choice">Output <select id="output"></select></label>
   </div>
 </header>
 <p id="status">Loading piano samples…</p>

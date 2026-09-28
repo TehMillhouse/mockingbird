@@ -1,4 +1,5 @@
 import * as Tone from "tone";
+import "./audio";
 import { type Level, totalTicks } from "./level";
 import type { Instruments } from "./synth";
 

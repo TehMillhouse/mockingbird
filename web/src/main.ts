@@ -1,4 +1,6 @@
 import * as Tone from "tone";
+import { audioContext, canChooseOutput, setOutputDevice } from "./audio";
+import { DevicePicker } from "./devices";
 import { fetchLevel, type LevelRequest } from "./level";
 import { Trace } from "./overlay";
 import { Mic } from "./pitch";
@@ -12,6 +14,9 @@ const status = $<HTMLParagraphElement>("#status");
 const playButton = $<HTMLButtonElement>("#play");
 const micButton = $<HTMLButtonElement>("#mic");
 const readout = $<HTMLOutputElement>("#sung");
+const inputLevel = $<HTMLMeterElement>("#input-level");
+const inputPicker = new DevicePicker($("#input"), "audioinput", "mockingbird.input-device");
+const outputPicker = new DevicePicker($("#output"), "audiooutput", "mockingbird.output-device");
 const sliders = {
   voice: $<HTMLInputElement>("#voice"),
   piano: $<HTMLInputElement>("#piano"),
@@ -95,22 +100,48 @@ async function restart(): Promise<void> {
   await player.restart();
 }
 
-async function toggleMic(): Promise<void> {
-  if (mic) {
-    mic.close();
-    mic = null;
-    readout.value = "";
-  } else {
-    try {
-      await Tone.start();
-      mic = await Mic.open(Tone.getContext().rawContext as AudioContext);
-      status.textContent = `Listening on ${mic.label}. Use headphones so the piano stays out of the mic.`;
-    } catch (e) {
-      status.textContent = `No microphone: ${e instanceof Error ? e.message : e}`;
-    }
+async function openMic(): Promise<void> {
+  mic?.close();
+  mic = null;
+  try {
+    await Tone.start();
+    mic = await Mic.open(audioContext, inputPicker.value);
+    status.textContent = `Listening on ${mic.label}. Use headphones so the piano stays out of the mic.`;
+    // device names are only readable once permission is granted
+    await Promise.all([inputPicker.refresh(), outputPicker.refresh()]);
+  } catch (e) {
+    const reason = e instanceof DOMException && e.name === "NotAllowedError"
+      ? "permission denied; allow the microphone for this page in the browser's site settings"
+      : e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    status.textContent = `Could not open the microphone (${reason}).`;
   }
+  showMicState();
+}
+
+function closeMic(): void {
+  mic?.close();
+  mic = null;
+  showMicState();
+}
+
+function showMicState(): void {
   micButton.textContent = mic ? "Mic on" : "Mic off";
   micButton.classList.toggle("on", mic !== null);
+  inputLevel.hidden = mic === null;
+  if (!mic) readout.value = "";
+}
+
+async function toggleMic(): Promise<void> {
+  if (mic) closeMic();
+  else await openMic();
+}
+
+async function chooseOutput(): Promise<void> {
+  try {
+    await setOutputDevice(outputPicker.value);
+  } catch (e) {
+    status.textContent = `Could not switch output: ${e instanceof Error ? e.message : e}`;
+  }
 }
 
 const NOTE_NAMES = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
@@ -144,9 +175,10 @@ const PITCH_INTERVAL_MS = 10;
 
 function listen(): void {
   if (!mic) return;
-  const reading = mic.read();
-  showSung(reading?.midi ?? null);
-  if (reading && loaded && player.playing) traceSung(mic, reading.midi, reading.time);
+  const { db, pitch } = mic.read();
+  inputLevel.value = db;
+  showSung(pitch?.midi ?? null);
+  if (pitch && loaded && player.playing) traceSung(mic, pitch.midi, pitch.time);
 }
 
 function frame(): void {
@@ -160,6 +192,12 @@ sliders.piano.addEventListener("input", () => applyVolume("piano"));
 sliders.tempo.addEventListener("input", () => { tempoTouched = true; applyTempo(); });
 playButton.addEventListener("click", togglePlay);
 micButton.addEventListener("click", toggleMic);
+$("#input").addEventListener("change", () => { if (mic) openMic(); });
+$("#output").addEventListener("change", chooseOutput);
+navigator.mediaDevices.addEventListener("devicechange", () => {
+  inputPicker.refresh();
+  outputPicker.refresh();
+});
 form.addEventListener("submit", e => { e.preventDefault(); newLevel(); });
 
 document.addEventListener("keydown", e => {
@@ -185,6 +223,10 @@ document.addEventListener("keydown", e => {
 });
 
 restoreForm();
+if (!canChooseOutput) $("#output-choice").hidden = true;
+Promise.all([inputPicker.refresh(), outputPicker.refresh()]).then(() => {
+  if (outputPicker.value) chooseOutput();
+});
 applyVolume("voice");
 applyVolume("piano");
 applyTempo();

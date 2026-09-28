@@ -11,9 +11,9 @@
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; padding: 1rem 16px 2rem; background: var(--bg); max-width: 1100px; margin-inline: auto; }
 header { display: flex; flex-wrap: wrap; gap: .75rem 2rem; align-items: end; justify-content: space-between; }
-form, #controls { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: end; }
+form, #controls, #devices { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: end; }
 label { display: flex; flex-direction: column; gap: .2rem; font-size: .8rem; color: var(--muted); }
-#controls label { flex-direction: row; align-items: center; gap: .4rem; }
+#controls label, #devices label { flex-direction: row; align-items: center; gap: .4rem; }
 output { min-width: 3.2rem; font-variant-numeric: tabular-nums; color: var(--ink); }
 select, button { font: inherit; font-size: .95rem; padding: .3rem .6rem; }
 button { cursor: pointer; }
@@ -23,6 +23,8 @@ button { cursor: pointer; }
 #paper .cursor { stroke: var(--accent); stroke-width: 1.5; opacity: .7; }
 #mic.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 #sung { min-width: 5.5rem; }
+#devices select { max-width: 16rem; }
+#input-level { width: 6rem; }
 #paper .trace path { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 #paper .trace .hit { stroke: #15803d; }
 #paper .trace .miss { stroke: #d97706; }

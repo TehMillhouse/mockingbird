@@ -1,4 +1,5 @@
 import * as Tone from "tone";
+import "./audio";
 
 const SALAMANDER = "https://tonejs.github.io/audio/salamander/";
 
