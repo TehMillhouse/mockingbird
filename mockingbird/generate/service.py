@@ -12,7 +12,8 @@ from ..harmonize.viterbi import harmonize
 from ..harmonize.voicing import voice as voice_lead
 from ..model import MelodyModel
 from ..schema import AccompEvent, GenerateRequest, Level, Note, Phrase
-from ..theory import VOICE_RANGES, frame_offset, is_diatonic, tonic_pc
+from ..theory import VOICE_RANGES, bar_ticks, frame_offset, is_diatonic, tonic_pc
+from . import warmup
 from .constraints import ConstraintState
 from .sampler import sample
 
@@ -23,8 +24,6 @@ log = logging.getLogger(__name__)
 
 
 def _ends_with_rest_bar(ph: Phrase) -> bool:
-    from ..theory import bar_ticks
-
     bt = bar_ticks(ph.meter)
     ticks = 0
     for n in reversed(ph.notes):
@@ -155,22 +154,31 @@ class LevelGenerator:
         phrase = best[1]
         return self.finish(phrase, req, style)
 
-    def finish(self, phrase: Phrase, req: GenerateRequest, style: str | None = None) -> Level:
-        """Place the melody in the singer's range, then harmonize, voice-lead and
-        render the accompaniment in concert pitch."""
+    def warmup(self, req: GenerateRequest) -> Level:
+        """The built-in warm-up in the requested key, mode and voice."""
+        phrase = warmup.warmup_phrase(req.mode)
+        bars = phrase.total_ticks() // bar_ticks(warmup.METER)
+        req = req.model_copy(update={"meter": warmup.METER, "bars": bars})
+        return self.finish(phrase, req, shift=warmup.warmup_shift(req.tonic, req.mode, req.voice))
+
+    def finish(self, phrase: Phrase, req: GenerateRequest, style: str | None = None,
+               shift: int | None = None) -> Level:
+        """Place the melody in the singer's range (or transpose it from the frame by
+        `shift`), then harmonize, voice-lead and render the accompaniment in concert
+        pitch."""
         if req.accompaniment not in TEXTURES:
             raise RuntimeError(f"accompaniment must be one of {TEXTURES}")
         offset = frame_offset(req.tonic, req.mode)
         lo, hi = VOICE_RANGES[req.voice]
         pitched = [n.pitch for n in phrase.notes if n.pitch is not None]
-        best_shift, best_cost = offset, float("inf")
-        for k in (-24, -12, 0, 12, 24):
-            shift = offset + k
-            out = sum(1 for p in pitched if not lo <= p + shift <= hi)
-            centre = abs((min(pitched) + max(pitched)) / 2 + shift - (lo + hi) / 2)
+        best_shift, best_cost = offset if shift is None else shift, float("inf")
+        for k in (-24, -12, 0, 12, 24) if shift is None else ():
+            candidate = offset + k
+            out = sum(1 for p in pitched if not lo <= p + candidate <= hi)
+            centre = abs((min(pitched) + max(pitched)) / 2 + candidate - (lo + hi) / 2)
             cost = out * 100 + centre
             if cost < best_cost:
-                best_shift, best_cost = shift, cost
+                best_shift, best_cost = candidate, cost
         melody = [Note(pitch=n.pitch + best_shift if n.pitch is not None else None,
                        duration=n.duration, tie=n.tie) for n in phrase.notes]
         frame_chords = harmonize(phrase.notes, req.meter, req.mode, phrase.pickup_ticks, offset=offset,

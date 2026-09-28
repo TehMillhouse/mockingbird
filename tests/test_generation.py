@@ -4,7 +4,7 @@ import torch
 from music21 import converter
 
 from mockingbird import tokenizer as tk
-from mockingbird.export.formats import to_abc, to_midi, to_musicxml
+from mockingbird.export.formats import _bar_text, to_abc, to_midi, to_musicxml
 from mockingbird.generate.constraints import ConstraintState
 from mockingbird.generate.sampler import sample
 from mockingbird.generate.service import LevelGenerator
@@ -144,3 +144,36 @@ def test_default_plan_forces_final_pac_and_lets_model_choose_interior(tiny_model
         assert all(c in INTERIOR_CADENCES for c in cads[:-1])
         interior.update(cads[:-1])
     assert len(interior) > 1  # interior cadences are sampled, not fixed
+
+
+@pytest.mark.parametrize("meter,items,expected", [
+    # a quarter beat in simple meters; a rest and a quarter break the beam
+    ("4/4", [([60], 12), ([62], 12), ([64], 12), ([65], 12), ([67], 24), (None, 12), ([69], 12)],
+     "CD EF G2 z A |]"),
+    # a dotted-quarter beat in compound meters, reset at every bar line
+    ("6/8", [([60], 12), ([62], 12), ([64], 12), ([65], 12), ([67], 12), ([69], 12)], "CDE FGA |]"),
+    ("3/8", [([60], 12), ([62], 12), ([64], 12), ([65], 12), ([67], 12), ([69], 12)], "CDE | FGA |]"),
+])
+def test_eighths_are_beamed_within_a_beat(meter, items, expected):
+    from mockingbird.schema import Level
+    level = Level(id="t", tonic="C", mode="major", meter=meter, voice="S", difficulty=1, bars=1, melody=[])
+    text = _bar_text([(p, d, False, None) for p, d in items], level, unit_ticks=12, written_shift=0)
+    assert text == expected
+
+
+@pytest.mark.parametrize("voice", list("SATB"))
+@pytest.mark.parametrize("tonic,mode", [("C", "major"), ("D", "minor"), ("Ab", "major")])
+def test_warmup_sits_in_whole_bars_around_the_voice(tonic, mode, voice):
+    from mockingbird.generate import warmup
+    phrase = warmup.warmup_phrase(mode)
+    assert phrase.total_ticks() % bar_ticks(warmup.METER) == 0
+    gen = LevelGenerator.__new__(LevelGenerator)  # finish() needs no model
+    req = GenerateRequest(tonic=tonic, mode=mode, voice=voice).model_copy(
+        update={"meter": warmup.METER, "bars": phrase.total_ticks() // bar_ticks(warmup.METER)})
+    level = gen.finish(phrase, req, shift=warmup.warmup_shift(tonic, mode, voice))
+    ps = [n.pitch for n in level.melody if n.pitch is not None]
+    lo, hi = VOICE_RANGES[voice]
+    assert max(ps) - min(ps) == 12
+    # the octave is centred in the range, so at most a whole tone sticks out on either side
+    assert lo - 2 <= min(ps) and max(ps) <= hi + 2
+    assert level.accompaniment and to_abc(level).count("|") >= level.bars

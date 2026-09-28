@@ -27,15 +27,26 @@ def _abc_len(ticks: int, unit_ticks: int) -> str:
 Item = tuple[list[int] | None, int, bool, str | None]  # (pitches, ticks, tie, chord symbol)
 
 
+def _beat_ticks(meter: str) -> int:
+    """Span that eighths and shorter notes are beamed across: a dotted quarter in
+    compound meters (6/8, 3/8, ...), else a quarter."""
+    num, den = (int(x) for x in meter.split("/"))
+    return TICKS_PER_QUARTER * 3 // 2 if den == 8 and num % 3 == 0 else TICKS_PER_QUARTER
+
+
 def _bar_text(items: list[Item], level: Level, unit_ticks: int, written_shift: int) -> str:
     """Lay out items into ABC bars with a bar line after every full bar, a line break every
-    four bars, and the pickup handled like the melody's."""
+    four bars, and the pickup handled like the melody's. Notes shorter than a quarter
+    within one beat are written without spaces between them, which beams them in ABC."""
     bt = bar_ticks(level.meter)
+    beat = _beat_ticks(level.meter)
     pos = (-level.pickup_ticks) % bt if level.pickup_ticks else 0
     body: list[str] = []
     bars = 0
+    beam_beat: int | None = None  # beat of the last token, if a following note may join its beam
     for pitches, dur, tie, symbol in items:
         tok = f'"{symbol}"' if symbol else ""
+        beamable = pitches is not None and dur < TICKS_PER_QUARTER
         if pitches is None:
             tok += "z" + _abc_len(dur, unit_ticks)
         else:
@@ -43,11 +54,16 @@ def _bar_text(items: list[Item], level: Level, unit_ticks: int, written_shift: i
             tok += (names[0] if len(names) == 1 else "[" + "".join(names) + "]") + _abc_len(dur, unit_ticks)
             if tie:
                 tok += "-"
-        body.append(tok)
+        if beamable and beam_beat == pos // beat:
+            body[-1] += tok
+        else:
+            body.append(tok)
+        beam_beat = pos // beat if beamable and (pos + dur - 1) // beat == pos // beat else None
         pos += dur
         if pos >= bt:
             pos = 0
             bars += 1
+            beam_beat = None
             body.append("|")
             if bars % 4 == 0:
                 body.append("\n")

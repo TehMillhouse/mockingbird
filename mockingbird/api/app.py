@@ -1,6 +1,7 @@
 """FastAPI service: generate levels and export them.
 
     POST /levels                      GenerateRequest -> Level JSON
+    POST /levels/warmup               GenerateRequest -> the built-in warm-up in its key and voice
     GET  /levels/{id}                 Level JSON
     GET  /levels/{id}/export?fmt=abc|musicxml|midi
     GET  /health
@@ -52,6 +53,15 @@ def create_app(model_path: Path | None = None) -> FastAPI:
             level = gen.generate(req)
         except RuntimeError as e:
             raise HTTPException(422, str(e)) from e
+        levels[level.id] = level
+        return level
+
+    @app.post("/levels/warmup", response_model=Level)
+    def create_warmup(req: GenerateRequest) -> Level:
+        gen = state.get("gen")
+        if gen is None:
+            raise HTTPException(503, "model not loaded")
+        level = gen.warmup(req)
         levels[level.id] = level
         return level
 
