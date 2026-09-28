@@ -1,5 +1,5 @@
 import abcjs from "abcjs";
-import { type Level, TICKS_PER_QUARTER } from "./level";
+import { barTicks, type Level, TICKS_PER_QUARTER, totalTicks } from "./level";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -12,6 +12,13 @@ interface Onset {
   top: number;
   height: number;
   elements: Element[];
+}
+
+/** A bar: its start tick, the system it is on, and the x of its left edge. */
+interface Bar {
+  ticks: number;
+  line: number;
+  left: number;
 }
 
 /** A sung melody note: its tick span and where its note head sits. */
@@ -30,6 +37,8 @@ export class Score {
   /** Distance between adjacent staff positions (line to space), in SVG units. */
   staffStep = 4;
   private onsets: Onset[] = [];
+  private bars: Bar[] = [];
+  private lines = new Map<number, { top: number; bottom: number }>();
   private targets: Target[] = [];
   private cursor: SVGLineElement | null = null;
   private current = -1;
@@ -62,6 +71,7 @@ export class Score {
       });
     }
     this.onsets = [...byTicks.values()].sort((a, b) => a.ticks - b.ticks);
+    this.findBars(level);
     this.current = -1;
 
     this.svg = this.paper.querySelector("svg");
@@ -109,6 +119,45 @@ export class Score {
 
   private indexAt(ticks: number): number {
     return lastAtOrBefore(this.onsets, o => o.ticks, ticks);
+  }
+
+  /** The start tick of the bar under a point on the page, or null outside the music.
+   *  A bar reaches from halfway between its first onset and the previous note to the
+   *  same point before the next bar; the first bar of a system reaches its start. */
+  barAt(clientX: number, clientY: number): number | null {
+    const ctm = this.svg?.getScreenCTM();
+    if (!this.svg || !ctm) return null;
+    const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+    let line: number | null = null;
+    let best = 30; // how far above or below a system a tap still counts, in SVG units
+    for (const [n, { top, bottom }] of this.lines) {
+      const distance = p.y < top ? top - p.y : p.y > bottom ? p.y - bottom : 0;
+      if (distance < best) [line, best] = [n, distance];
+    }
+    const onLine = this.bars.filter(b => b.line === line);
+    if (!onLine.length) return null;
+    return (onLine.filter(b => b.left <= p.x).pop() ?? onLine[0]).ticks;
+  }
+
+  private findBars(level: Level): void {
+    this.lines.clear();
+    for (const on of this.onsets) {
+      const span = this.lines.get(on.line);
+      this.lines.set(on.line, {
+        top: Math.min(span?.top ?? Infinity, on.top),
+        bottom: Math.max(span?.bottom ?? -Infinity, on.top + on.height),
+      });
+    }
+    const bar = barTicks(level.meter);
+    const starts = new Set<number>([0]);
+    for (let t = level.pickup_ticks || bar; t < totalTicks(level); t += bar) starts.add(t);
+    this.bars = [];
+    this.onsets.forEach((on, i) => {
+      if (!starts.has(on.ticks)) return;
+      const prev = this.onsets[i - 1];
+      const left = prev && prev.line === on.line ? (prev.right + on.left) / 2 : -Infinity;
+      this.bars.push({ ticks: on.ticks, line: on.line, left });
+    });
   }
 
   /** abcjs draws one note or rest group per melody entry, in order, on voice 0. */

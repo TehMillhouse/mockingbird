@@ -34,7 +34,7 @@ and separate stems for mixing.
 | `audio.ts` | The shared AudioContext and output routing |
 | `devices.ts` | Input and output device pickers |
 | `synth.ts` | Voice guide (mono synth) and piano (sampled), each behind its own gain node |
-| `transport.ts` | Schedules the level on Tone.js's transport in ticks; tempo is the transport's BPM |
+| `transport.ts` | Schedules the level on Tone.js's transport in ticks; count-in, pause and seeking; tempo is the transport's BPM |
 | `score.ts` | abcjs rendering, the ticks → score-position map, the cursor, melody note heads |
 | `pitch.ts` | Microphone input and pitch detection |
 | `overlay.ts` | The pitch trace drawn into the score's SVG |
@@ -52,6 +52,28 @@ the lists are refreshed once the mic opens.
 abcjs only draws; it never plays. Tone.js's 192 PPQ is exactly 8 of its ticks per level
 tick (24 per quarter), so every event lands on an exact transport tick. A tempo change
 therefore applies to every note that has not started yet.
+
+## Starting, count-in and seeking
+
+The player keeps its own playback position. Every start (Play, resume after a pause,
+restart, or a jump to a bar while playing) is preceded by clicks: one full bar plus
+the part of the current bar before the start, so the count begins on a downbeat and a
+pickup or a mid-bar resume enters on its own beat. The downbeat click is pitched
+higher. Beats are the meter's unit, or dotted quarters in 6/8, 9/8 and 12/8. The
+transport is started at the audio time the count-in ends, with the position as its
+offset; stopping during the count-in cancels that pending start. The Play button
+shows the count.
+
+Tapping a bar moves the position to the bar's start, and counts in from there if it
+was playing. A bar reaches from halfway between its first onset and the previous
+note to the same point before the next bar. The pitch trace from that bar on is
+removed, so the next pass draws on a clean score.
+
+The warm-up (`POST /levels/warmup`) is a fixed sequence of exercises on scale
+degrees: the scale up and down, steps out from the tonic and back, the same down
+from the upper tonic as a pedal point, the tonic arpeggio, and thirds. It is placed in
+the chosen key, mode and voice with the octave centred in the voice's range, and
+harmonized like a generated level.
 
 ## Ticks → position on the score
 

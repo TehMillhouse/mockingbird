@@ -21,6 +21,15 @@ export class Trace {
     this.last = null;
   }
 
+  /** Remove the lines that start at or after a tick, before singing that part again. */
+  clearFrom(ticks: number): void {
+    this.layer?.querySelectorAll("path").forEach(p => {
+      if (Number(p.dataset.ticks) >= ticks) p.remove();
+    });
+    this.path = null;
+    this.last = null;
+  }
+
   /** Add a point. `cents` is the octave-folded deviation from the target note. */
   add(ticks: number, note: number, x: number, y: number, cents: number): void {
     if (!this.layer) return;
@@ -34,6 +43,7 @@ export class Trace {
       // a new path per colour; when only the colour changes it starts at the previous point
       this.path = this.layer.appendChild(document.createElementNS(SVG_NS, "path"));
       this.path.classList.add(hit ? "hit" : "miss");
+      this.path.dataset.ticks = String(ticks);
       this.d = joined ? `M${last.point} L${point}` : `M${point}`;
     }
     this.path.setAttribute("d", this.d);

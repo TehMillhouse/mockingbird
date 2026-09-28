@@ -36,9 +36,12 @@ export interface LevelRequest {
   difficulty: number;
 }
 
-export async function fetchLevel(req: LevelRequest): Promise<{ level: Level; abc: string }> {
+/** A generated level, or with `kind: "warmup"` the built-in warm-up in the same key
+ *  and voice. */
+export async function fetchLevel(req: LevelRequest, kind: "generated" | "warmup" = "generated"):
+    Promise<{ level: Level; abc: string }> {
   // relative, so the app works under any path prefix
-  const r = await fetch("levels", {
+  const r = await fetch(kind === "warmup" ? "levels/warmup" : "levels", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -47,6 +50,11 @@ export async function fetchLevel(req: LevelRequest): Promise<{ level: Level; abc
   const level: Level = await r.json();
   const abc = await (await fetch(`levels/${level.id}/export?fmt=abc`)).text();
   return { level, abc };
+}
+
+export function barTicks(meter: string): number {
+  const [num, den] = meter.split("/").map(Number);
+  return (num * 4 * TICKS_PER_QUARTER) / den;
 }
 
 export function totalTicks(level: Level): number {

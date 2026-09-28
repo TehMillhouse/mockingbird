@@ -13,13 +13,23 @@ function salamanderUrls(): Record<string, string> {
   return urls;
 }
 
+/** A short click for count-ins and calibration, straight to the output. */
+export function makeClicker(): Tone.Synth {
+  return new Tone.Synth({
+    oscillator: { type: "square" },
+    envelope: { attack: 0.001, decay: 0.03, sustain: 0, release: 0.01 },
+    volume: -8,
+  }).toDestination();
+}
+
 /** The two sound sources, each behind its own gain so the mix changes live. */
 export class Instruments {
   readonly voiceGain = new Tone.Gain(1).toDestination();
   readonly pianoGain = new Tone.Gain(1).toDestination();
   readonly voice = new Tone.Synth({
     oscillator: { type: "triangle" },
-    envelope: { attack: 0.03, decay: 0.1, sustain: 0.8, release: 0.15 },
+    // a short release, so the gap before a repeated note stays audible
+    envelope: { attack: 0.03, decay: 0.1, sustain: 0.8, release: 0.04 },
   }).connect(this.voiceGain);
   readonly piano = new Tone.Sampler({ urls: salamanderUrls(), baseUrl: SALAMANDER, release: 1 })
     .connect(this.pianoGain);

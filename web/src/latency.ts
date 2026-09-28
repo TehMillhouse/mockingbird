@@ -1,6 +1,7 @@
 import * as Tone from "tone";
 import { audioContext } from "./audio";
 import type { Mic } from "./pitch";
+import { makeClicker } from "./synth";
 
 /** Seconds between calibration clicks or flashes. */
 const INTERVAL = 0.6;
@@ -58,11 +59,7 @@ let clicker: Tone.Synth | null = null;
 /** Schedule the click track; returns the AudioContext time of each click. The count-in
  *  clicks are pitched lower. */
 function scheduleClicks(): number[] {
-  clicker ??= new Tone.Synth({
-    oscillator: { type: "square" },
-    envelope: { attack: 0.001, decay: 0.03, sustain: 0, release: 0.01 },
-    volume: -8,
-  }).toDestination();
+  clicker ??= makeClicker();
   const start = audioContext.currentTime + 0.6;
   const times = Array.from({ length: LEAD_IN + COUNTED }, (_, i) => start + i * INTERVAL);
   times.forEach((t, i) => clicker!.triggerAttackRelease(i < LEAD_IN ? "G5" : "C6", 0.02, t));

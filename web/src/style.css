@@ -20,6 +20,8 @@ button { cursor: pointer; }
 #status { color: var(--muted); font-size: .85rem; min-height: 1.2em; }
 #paper { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: .5rem; min-height: 8rem; }
 #paper .playing { fill: var(--accent); }
+#paper svg { cursor: pointer; }
+#play { min-width: 4.5rem; font-variant-numeric: tabular-nums; }
 #paper .cursor { stroke: var(--accent); stroke-width: 1.5; opacity: .7; }
 #mic.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 #sung { min-width: 5.5rem; }

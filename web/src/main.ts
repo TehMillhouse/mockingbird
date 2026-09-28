@@ -60,10 +60,10 @@ function readForm(): LevelRequest {
   return { tonic: data.tonic, mode: data.mode, voice: data.voice, difficulty: Number(data.difficulty) };
 }
 
-async function newLevel(): Promise<void> {
+async function newLevel(kind: "generated" | "warmup" = "generated"): Promise<void> {
   status.textContent = "Generating…";
   try {
-    const { level, abc } = await fetchLevel(readForm());
+    const { level, abc } = await fetchLevel(readForm(), kind);
     if (!tempoTouched) sliders.tempo.value = String(level.tempo_bpm);
     applyTempo();
     player.load(level);
@@ -71,7 +71,9 @@ async function newLevel(): Promise<void> {
     if (score.svg) trace.attach(score.svg);
     loaded = true;
     playButton.disabled = false;
-    status.textContent = `Level ${level.id} · difficulty score ${level.difficulty_score?.toFixed(1) ?? "?"}`;
+    status.textContent = kind === "warmup"
+      ? "Warm-up: scale, pedal-point runs up and down, arpeggio and thirds."
+      : `Level ${level.id} · difficulty score ${level.difficulty_score?.toFixed(1) ?? "?"}`;
   } catch (e) {
     status.textContent = `Could not generate a level: ${e instanceof Error ? e.message : e}`;
   }
@@ -95,8 +97,17 @@ function nudge(slider: HTMLInputElement, delta: number): void {
 
 async function togglePlay(): Promise<void> {
   if (!loaded) return;
-  if (!player.playing && player.ticksAgo(0) === 0) trace.clear();
+  if (!player.active) trace.clearFrom(player.ticksAgo(0));
   await player.toggle();
+}
+
+/** Tapping a bar moves playback there; while playing it counts in again from it. */
+async function seekToBar(e: MouseEvent): Promise<void> {
+  if (!loaded) return;
+  const ticks = score.barAt(e.clientX, e.clientY);
+  if (ticks === null) return;
+  trace.clearFrom(ticks);
+  await player.seek(ticks);
 }
 
 async function restart(): Promise<void> {
@@ -233,7 +244,8 @@ function listen(): void {
 function frame(): void {
   // what is heard when this frame is seen was scheduled A − V ago
   if (loaded) score.moveTo(player.ticksAgo(latency.av));
-  playButton.textContent = player.playing ? "Pause" : "Play";
+  const beat = player.countInBeat(latency.av);
+  playButton.textContent = beat !== null ? String(beat) : player.active ? "Pause" : "Play";
   requestAnimationFrame(frame);
 }
 
@@ -241,6 +253,8 @@ sliders.voice.addEventListener("input", () => applyVolume("voice"));
 sliders.piano.addEventListener("input", () => applyVolume("piano"));
 sliders.tempo.addEventListener("input", () => { tempoTouched = true; applyTempo(); });
 playButton.addEventListener("click", togglePlay);
+$("#paper").addEventListener("click", seekToBar);
+$("#warmup").addEventListener("click", () => newLevel("warmup"));
 micButton.addEventListener("click", toggleMic);
 $("#input").addEventListener("change", () => { if (mic) openMic(); });
 $("#output").addEventListener("change", chooseOutput);
@@ -273,7 +287,8 @@ document.addEventListener("keydown", e => {
     "+": () => nudge(sliders.tempo, 5),
     "=": () => nudge(sliders.tempo, 5),
     "-": () => nudge(sliders.tempo, -5),
-    g: newLevel,
+    g: () => newLevel(),
+    w: () => newLevel("warmup"),
     "[": () => nudge(sliders.voice, -10),
     "]": () => nudge(sliders.voice, 10),
     ";": () => nudge(sliders.piano, -10),

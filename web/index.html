@@ -19,6 +19,7 @@
       <option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option>
     </select></label>
     <button type="submit">New level</button>
+    <button id="warmup" type="button">Warm-up</button>
   </form>
   <div id="controls">
     <label>Voice <input id="voice" type="range" min="0" max="100" value="50"><output for="voice"></output></label>
@@ -55,7 +56,7 @@
 <p id="status">Loading piano samples…</p>
 <main id="paper"></main>
 <footer>
-  <kbd>Space</kbd> play / pause · <kbd>R</kbd> restart · <kbd>M</kbd> microphone · <kbd>+</kbd> <kbd>-</kbd> tempo · <kbd>G</kbd> new level ·
+  <kbd>Space</kbd> play / pause · <kbd>R</kbd> restart · <kbd>M</kbd> microphone · <kbd>+</kbd> <kbd>-</kbd> tempo · <kbd>G</kbd> new level · <kbd>W</kbd> warm-up · tap a bar to start there ·
   <kbd>[</kbd> <kbd>]</kbd> voice volume · <kbd>;</kbd> <kbd>'</kbd> piano volume
 </footer>
 <script type="module" src="/src/main.ts"></script>
