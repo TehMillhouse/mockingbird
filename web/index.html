@@ -25,12 +25,14 @@
     <label>Piano <input id="piano" type="range" min="0" max="100" value="70"><output for="piano"></output></label>
     <label>Tempo <input id="tempo" type="range" min="40" max="200" value="100"><output for="tempo"></output></label>
     <button id="play" type="button" disabled>Play</button>
+    <button id="mic" type="button">Mic off</button>
+    <output id="sung"></output>
   </div>
 </header>
 <p id="status">Loading piano samples…</p>
 <main id="paper"></main>
 <footer>
-  <kbd>Space</kbd> play / pause · <kbd>R</kbd> restart · <kbd>+</kbd> <kbd>-</kbd> tempo · <kbd>G</kbd> new level ·
+  <kbd>Space</kbd> play / pause · <kbd>R</kbd> restart · <kbd>M</kbd> microphone · <kbd>+</kbd> <kbd>-</kbd> tempo · <kbd>G</kbd> new level ·
   <kbd>[</kbd> <kbd>]</kbd> voice volume · <kbd>;</kbd> <kbd>'</kbd> piano volume
 </footer>
 <script type="module" src="/src/main.ts"></script>

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "abcjs": "^6.7.1",
+    "pitchy": "^4.1.0",
     "tone": "^15.1.22"
   },
   "devDependencies": {

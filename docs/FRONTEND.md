@@ -4,8 +4,8 @@ A browser app in `web/` (Vite, TypeScript). It fetches a level from the API, sho
 sheet music and plays it. The singer's pitch is drawn over the notation itself, because
 the point is learning to sight-sing from a score.
 
-Built: notation, playback, live mix and live tempo.
-Not yet built: microphone trace, latency calibration, scoring.
+Built: notation, playback, live mix, live tempo, microphone pitch trace.
+Not yet built: latency calibration, scoring.
 
 ## Running
 
@@ -30,7 +30,9 @@ and separate stems for mixing.
 | `level.ts` | Level types (mirrors `schema.py`), fetching |
 | `synth.ts` | Voice guide (mono synth) and piano (sampled), each behind its own gain node |
 | `transport.ts` | Schedules the level on Tone.js's transport in ticks; tempo is the transport's BPM |
-| `score.ts` | abcjs rendering, the ticks → score-position map, the cursor |
+| `score.ts` | abcjs rendering, the ticks → score-position map, the cursor, melody note heads |
+| `pitch.ts` | Microphone input and pitch detection |
+| `overlay.ts` | The pitch trace drawn into the score's SVG |
 | `main.ts` | Controls and keybinds |
 
 abcjs only draws; it never plays. Tone.js's 192 PPQ is exactly 8 of its ticks per level
@@ -49,7 +51,7 @@ The cursor follows the tick currently reaching the speakers:
 `transport.getTicksAtTime(currentTime − output latency)`, not the transport's
 lookahead position.
 
-## Pitch trace (design)
+## Pitch trace
 
 - **Vertical position is relative to the target note:**
   y = note head y − (cents deviation / 100) × half a staff step.
@@ -59,7 +61,17 @@ lookahead position.
 - **Octave errors are folded:** the sung pitch is moved to the octave nearest the
   target before drawing and scoring.
 - **Hits:** within ±50 cents counts as a hit, and the trace is coloured by deviation.
-- **Detection:** McLeod pitch method (pitchy) on `AnalyserNode` frames.
+- **Detection:** McLeod pitch method (pitchy) on the latest 2048-sample
+  `AnalyserNode` window, sampled every 10 ms on a timer, so the rate does not depend
+  on the display. Readings below 0.9 clarity are dropped. The browser's echo
+  cancellation, noise suppression and gain control are off, since they distort
+  sustained pitch.
+- **Target lookup:** abcjs draws one note or rest group per melody entry on voice 0,
+  in order. Each sung note's head position comes from its group's note head; a
+  staff step is an eighth of the five-line staff's height.
+- **Time:** a reading is timestamped at the centre of its window. It is mapped to the
+  tick the singer was hearing through input and output latency (see below). Until
+  calibration exists, those are the browser's reported values.
 
 ## Latency model (design)
 
