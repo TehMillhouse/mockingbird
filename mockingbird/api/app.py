@@ -38,7 +38,8 @@ def create_app(model_path: Path | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict:
         gen = state.get("gen")
-        return {"ok": gen is not None, "device": getattr(gen, "device", None), "levels": len(levels)}
+        return {"ok": gen is not None, "device": getattr(gen, "device", None), "levels": len(levels),
+                "copy_check": gen is not None and gen.memo.available}
 
     @app.post("/levels", response_model=Level)
     def create_level(req: GenerateRequest) -> Level:

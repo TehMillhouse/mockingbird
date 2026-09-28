@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from pathlib import Path
-
-import torch
 
 from .. import difficulty, tokenizer as tk
 from ..harmonize.render import STYLES as TEXTURES, render, resolve_texture
@@ -19,6 +18,8 @@ from .sampler import sample
 
 NGRAM = 12
 CANDIDATES = 8
+
+log = logging.getLogger(__name__)
 
 
 def _ends_with_rest_bar(ph: Phrase) -> bool:
@@ -46,15 +47,23 @@ def _final_note_is_longest(ph: Phrase) -> bool:
 
 
 class MemorizationIndex:
-    """Set of (interval, duration) n-grams from the training set."""
+    """Set of (interval, duration) n-grams from the training set. Without the training
+    data it is empty and nothing counts as a copy."""
 
     def __init__(self, grams: set[tuple]):
         self.grams = grams
 
+    @property
+    def available(self) -> bool:
+        return bool(self.grams)
+
     @classmethod
     def build(cls, train_jsonl: Path) -> "MemorizationIndex":
         grams: set[tuple] = set()
-        if train_jsonl.exists():
+        if not train_jsonl.exists():
+            log.warning("no training data at %s: generated melodies are not checked for "
+                        "copies of the training set", train_jsonl)
+        else:
             with train_jsonl.open(encoding="utf-8") as f:
                 for line in f:
                     r = json.loads(line)
@@ -78,8 +87,10 @@ class LevelGenerator:
     def __init__(self, model_path: Path = Path("models/melody-v1.pt"),
                  thresholds_path: Path | None = None,
                  train_jsonl: Path | None = Path("data/processed/train.jsonl"),
-                 device: str | None = None):
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+                 device: str = "cpu"):
+        # the model is small enough that per-step overhead dominates on a GPU, so with
+        # the KV cache the CPU generates faster
+        self.device = device
         self.model, extra = MelodyModel.load(model_path, self.device)
         if extra.get("vocab") and extra["vocab"] != tk.VOCAB:
             raise RuntimeError("checkpoint vocabulary does not match the tokenizer")
