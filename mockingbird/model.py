@@ -95,6 +95,48 @@ def _apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.
     return x * cos + _rotate_half(x) * sin
 
 
+def _causal_mask(t_query: int, t_key: int, device) -> torch.Tensor:
+    """(t_query, t_key) bool mask for queries that are the last t_query key positions."""
+    return torch.ones(t_query, t_key, dtype=torch.bool, device=device).tril(diagonal=t_key - t_query)
+
+
+class KVCache:
+    """Attention keys and values of earlier positions, for decoding a token at a time.
+
+    Every attention call in a forward pass has its own slot, assigned in call order, so
+    the looped core's repeated passes over shared weights are cached separately.
+    Buffers are allocated for `max_len` positions and filled in place."""
+
+    def __init__(self, max_len: int):
+        self.max_len = max_len
+        self.length = 0
+        self.anchor: torch.Tensor | None = None
+        self._slots: list[list[torch.Tensor | None]] = []
+        self._next = 0
+
+    def begin(self) -> None:
+        self._next = 0
+
+    def update(self, k: torch.Tensor, v: torch.Tensor, k_raw: torch.Tensor | None):
+        """Store the new positions of one attention call; return keys, values and raw
+        keys for every position so far."""
+        i = self._next
+        self._next += 1
+        if i == len(self._slots):
+            b, h, _, dh = k.shape
+            new = lambda: k.new_empty(b, h, self.max_len, dh)
+            self._slots.append([new(), new(), new() if k_raw is not None else None])
+        start, end = self.length, self.length + k.size(2)
+        out = []
+        for buf, val in zip(self._slots[i], (k, v, k_raw)):
+            if buf is None:
+                out.append(None)
+                continue
+            buf[:, :, start:end] = val
+            out.append(buf[:, :, :end])
+        return out[0], out[1], out[2]
+
+
 class Block(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
@@ -114,8 +156,11 @@ class Block(nn.Module):
         self.post2 = nn.LayerNorm(cfg.d_model) if cfg.sandwich_norm else nn.Identity()
 
     def forward(self, x: torch.Tensor, rope: tuple[torch.Tensor, torch.Tensor] | None,
-                anchor: torch.Tensor | None = None) -> torch.Tensor:
+                anchor: torch.Tensor | None = None, cache: "KVCache | None" = None) -> torch.Tensor:
+        """With a `cache`, `x` holds only the positions after those already cached;
+        `rope` and `anchor` cover the new positions and all positions respectively."""
         b, t, d = x.shape
+        past = cache.length if cache is not None else 0
         q, k, v = self.qkv(self.ln1(x)).split(d, dim=2)
         q = q.view(b, t, self.n_head, d // self.n_head).transpose(1, 2)
         k = k.view(b, t, self.n_head, d // self.n_head).transpose(1, 2)
@@ -124,13 +169,18 @@ class Block(nn.Module):
         if self.rope and rope is not None:
             cos, sin = rope
             if cos.dim() == 2:  # token-index RoPE: shared table
-                cos, sin = cos[:t], sin[:t]
+                cos, sin = cos[past:past + t], sin[past:past + t]
             q = _apply_rope(q, cos, sin)
             k = _apply_rope(k, cos, sin)
-        if self.anchor and anchor is not None:
+        anchored = self.anchor and anchor is not None
+        if cache is not None:
+            k, v, k_raw = cache.update(k, v, k_raw if anchored else None)
+        if anchored:
             y = self._anchored_attention(q, k, q_raw, k_raw, v, anchor)
         else:
-            y = F.scaled_dot_product_attention(q, k, v, is_causal=True,
+            # queries sit at the end of the key sequence; a single query sees every key
+            mask = None if t == 1 or past == 0 else _causal_mask(t, k.size(2), q.device)
+            y = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, is_causal=past == 0 and t > 1,
                                                dropout_p=self.attn_dropout if self.training else 0.0)
         y = y.transpose(1, 2).contiguous().view(b, t, d)
         x = x + self.drop(self.post1(self.proj(y)))
@@ -139,15 +189,14 @@ class Block(nn.Module):
 
 
     def _anchored_attention(self, q, k, q_raw, k_raw, v, anchor: torch.Tensor) -> torch.Tensor:
-        """Causal attention where scores against anchor keys (anchor: (B, T) bool) use
-        the unrotated projections, so they do not depend on distance."""
+        """Causal attention where scores against anchor keys (anchor: (B, T) bool over
+        the keys) use the unrotated projections, so they do not depend on distance."""
         b, h, t, dh = q.shape
         scale = 1.0 / math.sqrt(dh)
         scores = torch.matmul(q, k.transpose(-1, -2)) * scale
         scores_anchor = torch.matmul(q_raw, k_raw.transpose(-1, -2)) * scale
         scores = torch.where(anchor[:, None, None, :], scores_anchor, scores)
-        causal = torch.ones(t, t, dtype=torch.bool, device=q.device).tril()
-        scores = scores.masked_fill(~causal, float("-inf"))
+        scores = scores.masked_fill(~_causal_mask(t, k.size(2), q.device), float("-inf"))
         attn = torch.softmax(scores.float(), dim=-1).to(v.dtype)
         if self.training and self.attn_dropout > 0:
             attn = F.dropout(attn, p=self.attn_dropout)
@@ -193,15 +242,19 @@ class MelodyModel(nn.Module):
             nn.init.normal_(m.weight, mean=0.0, std=0.02)
 
     def forward(self, idx: torch.Tensor, metric: dict[str, torch.Tensor] | None = None,
-                loops: int | None = None) -> torch.Tensor:
+                loops: int | None = None, cache: KVCache | None = None) -> torch.Tensor:
         """`metric` holds per-token musical time from `tokenizer.metric_info`, stacked:
-        bars, ticks (B, T) long; abs (B, T) long; beat, bar (B,) long."""
+        bars, ticks (B, T) long; abs (B, T) long; beat, bar (B,) long.
+
+        With a `cache`, `idx` and the per-token metric fields hold only the positions
+        after those already cached, and the cache is extended by them."""
         b, t = idx.shape
-        if t > self.cfg.max_len:
-            raise ValueError(f"sequence length {t} exceeds max_len {self.cfg.max_len}")
+        past = cache.length if cache is not None else 0
+        if past + t > self.cfg.max_len:
+            raise ValueError(f"sequence length {past + t} exceeds max_len {self.cfg.max_len}")
         x = self.tok(idx)
         if self.pos is not None:
-            x = x + self.pos(torch.arange(t, device=idx.device))
+            x = x + self.pos(torch.arange(past, past + t, device=idx.device))
         if self.cfg.metric_emb:
             if metric is None:
                 raise ValueError("metric_emb model needs metric positions")
@@ -216,19 +269,26 @@ class MelodyModel(nn.Module):
             ang = metric_rope_angles(metric["abs"], metric["beat"], metric["bar"], self.cfg.d_model // self.cfg.n_head)
             rope = (ang.cos().unsqueeze(1).to(x.dtype), ang.sin().unsqueeze(1).to(x.dtype))
         anchor = metric.get("anchor") if (metric is not None and self.cfg.anchor_prefix) else None
+        if cache is not None:
+            cache.begin()
+            if anchor is not None:  # attention needs the anchor flags of every key
+                cache.anchor = anchor if past == 0 else torch.cat([cache.anchor, anchor], dim=1)
+                anchor = cache.anchor
         if self.cfg.arch == "looped":
             for blk in self.prelude:
-                x = blk(x, rope, anchor)
+                x = blk(x, rope, anchor, cache)
             n_loops = loops if loops is not None else self.cfg.loop_center
             for i in range(n_loops):
                 x = x + self.loop_emb.weight[min(i, self.loop_emb.num_embeddings - 1)]
                 for blk in self.core:
-                    x = blk(x, rope, anchor)
+                    x = blk(x, rope, anchor, cache)
             for blk in self.coda:
-                x = blk(x, rope, anchor)
+                x = blk(x, rope, anchor, cache)
         else:
             for blk in self.blocks:
-                x = blk(x, rope, anchor)
+                x = blk(x, rope, anchor, cache)
+        if cache is not None:
+            cache.length += t
         x = self.ln_f(x)
         return x @ self.tok.weight.T  # tied output embedding
 
