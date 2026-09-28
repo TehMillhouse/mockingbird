@@ -8,6 +8,12 @@
       "port": 8000
     },
     {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "web"],
+      "port": 5173
+    },
+    {
       "name": "plots",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8010", "--directory", "models/plots"],

@@ -1,9 +1,10 @@
 # Mockingbird
 
-Sight-singing trainer for a classical choir. This repository currently holds the
-level-generation backend: a small locally trained melody model, a rule-based
-harmonizer, exporters (ABC, MusicXML, MIDI) and an HTTP API with a development preview
-page. The playing UI, microphone scoring and backing singer are future milestones.
+Sight-singing trainer for a classical choir. This repository holds the
+level-generation backend (a small locally trained melody model, a rule-based
+harmonizer, exporters for ABC, MusicXML and MIDI, and an HTTP API) and a browser
+frontend in `web/` that shows and plays levels with a live mix and tempo. Microphone
+scoring is designed but not built yet; see `docs/FRONTEND.md`.
 
 ## Setup
 
@@ -20,7 +21,7 @@ uv sync --all-groups
 uv run mb data build          # corpora -> data/processed/{train,val}.jsonl  (~5 min)
 uv run mb train               # -> models/melody-v1.pt                       (~15 min on GPU)
 uv run mb generate --tonic D --mode major --voice S --difficulty 2 --bars 8 --out level.abc
-uv run mb serve               # API on http://127.0.0.1:8000, preview page at /
+uv run mb serve               # API on http://127.0.0.1:8000, web app (if built) at /
 uv run pytest
 ```
 

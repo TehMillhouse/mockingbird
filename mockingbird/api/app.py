@@ -4,7 +4,7 @@
     GET  /levels/{id}                 Level JSON
     GET  /levels/{id}/export?fmt=abc|musicxml|midi
     GET  /health
-    GET  /                            development preview page (abcjs)
+    GET  /                            the web app (web/dist) if built, else the abcjs preview page
 """
 from __future__ import annotations
 
@@ -12,12 +12,15 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from ..export.formats import to_abc, to_midi, to_musicxml
 from ..schema import GenerateRequest, Level
 
-PREVIEW_PAGE = Path(__file__).resolve().parents[2] / "tools" / "abc_preview.html"
+ROOT = Path(__file__).resolve().parents[2]
+PREVIEW_PAGE = ROOT / "tools" / "abc_preview.html"
+WEB_DIST = ROOT / "web" / "dist"
 
 
 def create_app(model_path: Path | None = None) -> FastAPI:
@@ -69,11 +72,18 @@ def create_app(model_path: Path | None = None) -> FastAPI:
                             headers={"Content-Disposition": f'attachment; filename="{level_id}.mid"'})
         raise HTTPException(400, "fmt must be abc, musicxml or midi")
 
-    @app.get("/", response_class=HTMLResponse)
-    def preview() -> str:
-        if not PREVIEW_PAGE.exists():
-            raise HTTPException(404, "preview page not found")
-        return PREVIEW_PAGE.read_text(encoding="utf-8")
+    if (WEB_DIST / "index.html").exists():
+        app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
+
+        @app.get("/")
+        def web_app() -> FileResponse:
+            return FileResponse(WEB_DIST / "index.html")
+    else:
+        @app.get("/", response_class=HTMLResponse)
+        def preview() -> str:
+            if not PREVIEW_PAGE.exists():
+                raise HTTPException(404, "preview page not found")
+            return PREVIEW_PAGE.read_text(encoding="utf-8")
 
     return app
 

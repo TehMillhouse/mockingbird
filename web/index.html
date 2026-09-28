@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockingbird</title>
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<header>
+  <form id="level">
+    <label>Key <select name="tonic">
+      <option>C</option><option>Db</option><option>D</option><option>Eb</option><option>E</option><option>F</option>
+      <option>F#</option><option>G</option><option>Ab</option><option>A</option><option>Bb</option><option>B</option>
+    </select></label>
+    <label>Mode <select name="mode"><option>major</option><option>minor</option></select></label>
+    <label>Voice <select name="voice"><option>S</option><option>A</option><option>T</option><option>B</option></select></label>
+    <label>Difficulty <select name="difficulty">
+      <option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option>
+    </select></label>
+    <button type="submit">New level</button>
+  </form>
+  <div id="controls">
+    <label>Voice <input id="voice" type="range" min="0" max="100" value="100"><output for="voice"></output></label>
+    <label>Piano <input id="piano" type="range" min="0" max="100" value="70"><output for="piano"></output></label>
+    <label>Tempo <input id="tempo" type="range" min="40" max="200" value="100"><output for="tempo"></output></label>
+    <button id="play" type="button" disabled>Play</button>
+  </div>
+</header>
+<p id="status">Loading piano samples…</p>
+<main id="paper"></main>
+<footer>
+  <kbd>Space</kbd> play / pause · <kbd>R</kbd> restart · <kbd>+</kbd> <kbd>-</kbd> tempo · <kbd>G</kbd> new level ·
+  <kbd>[</kbd> <kbd>]</kbd> voice volume · <kbd>;</kbd> <kbd>'</kbd> piano volume
+</footer>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
