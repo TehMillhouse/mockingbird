@@ -60,3 +60,34 @@ export function barTicks(meter: string): number {
 export function totalTicks(level: Level): number {
   return level.melody.reduce((t, n) => t + n.duration, 0);
 }
+
+/** Melody notes as sounding events: tied notes of the same pitch become one. */
+export function melodyEvents(level: Level): { start: number; duration: number; pitches: number[] }[] {
+  const out: { start: number; duration: number; pitches: number[] }[] = [];
+  let t = 0;
+  let tiedFromPrevious = false;
+  for (const n of level.melody) {
+    if (n.pitch !== null) {
+      const last = out[out.length - 1];
+      if (tiedFromPrevious && last && last.pitches[0] === n.pitch) last.duration += n.duration;
+      else out.push({ start: t, duration: n.duration, pitches: [n.pitch] });
+    }
+    tiedFromPrevious = n.tie;
+    t += n.duration;
+  }
+  return out;
+}
+
+/** The level's bars; a pickup is a short first bar. */
+export function levelBars(level: Level): { start: number; duration: number; meter: string }[] {
+  const bar = barTicks(level.meter);
+  const total = totalTicks(level);
+  const bars = [];
+  let start = 0;
+  if (level.pickup_ticks) {
+    bars.push({ start: 0, duration: level.pickup_ticks, meter: level.meter });
+    start = level.pickup_ticks;
+  }
+  for (; start < total; start += bar) bars.push({ start, duration: Math.min(bar, total - start), meter: level.meter });
+  return bars;
+}

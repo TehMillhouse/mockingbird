@@ -1,11 +1,17 @@
 # Frontend
 
-A browser app in `web/` (Vite, TypeScript). It fetches a level from the API, shows it as
-sheet music and plays it. The singer's pitch is drawn over the notation itself, because
-the point is learning to sight-sing from a score.
+A browser app in `web/` (Vite, TypeScript) with two pages on one set of practice
+machinery:
 
-It covers notation, playback, a live mix, live tempo, the microphone pitch trace and
-latency calibration. There is no separate score: the coloured trace is the feedback.
+- **Sight-singing trainer** (`index.html`): generated levels and the warm-up, one sung
+  line over a piano part, rendered with abcjs.
+- **Choir pieces** (`piece.html`): real pieces from MusicXML with all their parts and
+  lyrics, rendered with OpenSheetMusicDisplay (OSMD). You pick your part; the other
+  voices and the piano play along.
+
+Both show the sheet music, play it with a live mix and tempo, count in, start from a
+tapped bar, and draw the singer's pitch over the notation itself, because the point is
+singing from a score. There is no separate score: the coloured trace is the feedback.
 
 ## Running
 
@@ -30,16 +36,18 @@ and separate stems for mixing.
 
 | Module | Role |
 |---|---|
-| `level.ts` | Level types (mirrors `schema.py`), fetching |
+| `practice.ts` | What both pages share: player, microphone, pitch trace, devices, calibration, cursor, keys; the `ScoreView` interface a renderer implements |
+| `level.ts` | Level types (mirrors `schema.py`), fetching, level → bars and melody events |
 | `audio.ts` | The shared AudioContext and output routing |
 | `devices.ts` | Input and output device pickers |
-| `synth.ts` | Voice guide (mono synth) and piano (sampled), each behind its own gain node |
-| `transport.ts` | Schedules the level on Tone.js's transport in ticks; count-in, pause and seeking; tempo is the transport's BPM |
-| `score.ts` | abcjs rendering, the ticks → score-position map, the cursor, melody note heads |
+| `synth.ts` | Voice guide (mono synth) and piano (sampled) for levels; a synth per sung part for pieces; each behind its own gain node |
+| `transport.ts` | Schedules an arrangement (tracks, bars, tempo map) on Tone.js's transport in ticks; count-in, pause and seeking |
+| `score.ts` | `ScoreView` for levels: abcjs rendering, ticks → positions, cursor, melody note heads |
+| `osmd-score.ts` | `ScoreView` for pieces: the same from OSMD's layout |
 | `pitch.ts` | Microphone input and pitch detection |
 | `overlay.ts` | The pitch trace drawn into the score's SVG |
 | `latency.ts` | Calibration procedures and stored offsets |
-| `main.ts` | Controls and keybinds |
+| `main.ts`, `piece.ts` | Each page's own controls |
 
 Output device choice needs `AudioContext.setSinkId`, which only the native context
 has, so where the browser supports it Tone.js runs on a native `AudioContext` instead
@@ -74,6 +82,29 @@ degrees: the scale up and down, steps out from the tonic and back, the same down
 from the upper tonic as a pedal point, the tonic arpeggio, and thirds. It is placed in
 the chosen key, mode and voice with the octave centred in the voice's range, and
 harmonized like a generated level.
+
+## Choir pieces
+
+The server reads MusicXML files from `$MOCKINGBIRD_PIECES` (by default
+`data/external/practice`) and serves two things per piece: playback data (each part's
+notes in ticks with ties merged, the bars, the tempo map, which parts are sung and the
+closest voice for each, the lyric lines) and the score itself as MusicXML. Finale
+writes some syllable joins as a lyric syllable consisting only of a soft hyphen plus an
+elision; those are removed before the score is served. Repeats are not expanded, so
+playback follows the score as written, like the rendered page. A file without a title
+is named after itself.
+
+The page keeps only the chosen lyric line (e.g. German or English) in the MusicXML it
+hands to OSMD. Each part is one staff here (a piano's two staves are two parts), so
+part indices are staff indices. Mix: your part, the other voices together, and the
+piano. Tempo is a percentage of the written tempo map. Your part, its voice and each
+piece's text choice are remembered in the browser.
+
+OSMD lays out in staff spaces; a bar's ticks come from its measure's absolute
+timestamp, an onset's from the bar plus the staff entry's offset. Positions are read
+from the rendered note heads and converted to the SVG's own units, so the overlay does
+not depend on OSMD's internal scaling. The score is laid out again when the window's
+width changes or another part is chosen.
 
 ## Ticks → position on the score
 

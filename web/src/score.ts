@@ -1,5 +1,6 @@
 import abcjs from "abcjs";
 import { barTicks, type Level, TICKS_PER_QUARTER, totalTicks } from "./level";
+import type { ScoreView, Target } from "./practice";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -21,18 +22,9 @@ interface Bar {
   left: number;
 }
 
-/** A sung melody note: its tick span and where its note head sits. */
-export interface Target {
-  index: number;
-  start: number;
-  end: number;
-  pitch: number;
-  headY: number;
-}
-
 /** The rendered notation, plus a map from level ticks to positions on it.
  *  The map is in ticks, so it stays valid when the tempo changes. */
-export class Score {
+export class Score implements ScoreView {
   svg: SVGSVGElement | null = null;
   /** Distance between adjacent staff positions (line to space), in SVG units. */
   staffStep = 4;

@@ -22,15 +22,58 @@ export function makeClicker(): Tone.Synth {
   }).toDestination();
 }
 
+const VOICE_SYNTH = {
+  oscillator: { type: "triangle" as const },
+  // a short release, so the gap before a repeated note stays audible
+  envelope: { attack: 0.03, decay: 0.1, sustain: 0.8, release: 0.04 },
+};
+
+/** A choir piece's sound: a synth voice per sung part, each behind its own gain, and
+ *  one piano for the accompaniment staves. */
+export class PartInstruments {
+  private readonly pianoGain = new Tone.Gain(1).toDestination();
+  private readonly piano = new Tone.Sampler({ urls: salamanderUrls(), baseUrl: SALAMANDER, release: 1 })
+    .connect(this.pianoGain);
+  private voices: { synth: Tone.PolySynth; gain: Tone.Gain }[] = [];
+  private sung: boolean[] = [];
+
+  /** Set up for a piece's parts, in order. */
+  setup(sung: boolean[]): void {
+    this.voices.forEach(v => { v.synth.dispose(); v.gain.dispose(); });
+    this.sung = sung;
+    this.voices = sung.map(() => {
+      const gain = new Tone.Gain(1).toDestination();
+      return { gain, synth: new Tone.PolySynth(Tone.Synth, VOICE_SYNTH).connect(gain) };
+    });
+  }
+
+  /** How part `index` sounds. */
+  play(index: number): (notes: string[], seconds: number, time: number) => void {
+    if (!this.sung[index]) return (notes, seconds, time) => this.piano.triggerAttackRelease(notes, seconds, time, 0.6);
+    const synth = this.voices[index].synth;
+    return (notes, seconds, time) => synth.triggerAttackRelease(notes, seconds, time);
+  }
+
+  /** Volumes in 0..1 from sliders, squared so the sliders feel even. */
+  mix(mine: number, volumes: { mine: number; choir: number; piano: number }): void {
+    this.voices.forEach((v, i) => {
+      const volume = i === mine ? volumes.mine : volumes.choir;
+      v.gain.gain.rampTo(volume * volume, 0.03);
+    });
+    this.pianoGain.gain.rampTo(volumes.piano * volumes.piano, 0.03);
+  }
+
+  silence(): void {
+    this.voices.forEach(v => v.synth.releaseAll());
+    this.piano.releaseAll();
+  }
+}
+
 /** The two sound sources, each behind its own gain so the mix changes live. */
 export class Instruments {
   readonly voiceGain = new Tone.Gain(1).toDestination();
   readonly pianoGain = new Tone.Gain(1).toDestination();
-  readonly voice = new Tone.Synth({
-    oscillator: { type: "triangle" },
-    // a short release, so the gap before a repeated note stays audible
-    envelope: { attack: 0.03, decay: 0.1, sustain: 0.8, release: 0.04 },
-  }).connect(this.voiceGain);
+  readonly voice = new Tone.Synth(VOICE_SYNTH).connect(this.voiceGain);
   readonly piano = new Tone.Sampler({ urls: salamanderUrls(), baseUrl: SALAMANDER, release: 1 })
     .connect(this.pianoGain);
 
