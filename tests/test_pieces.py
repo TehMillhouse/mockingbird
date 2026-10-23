@@ -69,3 +69,17 @@ def test_piece_routes(tmp_path, monkeypatch):
     assert client.get("/pieces/elias-15").json()["parts"][0]["name"] == "Soprano"
     assert client.get("/pieces/elias-15/musicxml").text.startswith("<?xml")
     assert client.get("/pieces/nope").status_code == 404
+
+
+def test_unfinished_words_are_continued(tmp_path):
+    def note(syllabic, text):
+        return (f'<note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration>'
+                f'<lyric number="1"><syllabic>{syllabic}</syllabic><text>{text}</text></lyric></note>')
+    path = tmp_path / "x.musicxml"
+    path.write_text('<?xml version="1.0" encoding="UTF-8"?><score-partwise><part-list><score-part id="P1">'
+                    '<part-name>S</part-name></score-part></part-list><part id="P1"><measure number="1">'
+                    + note("begin", "er") + note("begin", "hö") + note("single", "re") + note("single", "uns")
+                    + "</measure></part></score-partwise>", encoding="utf-8")
+    import re
+    assert re.findall(r"<syllabic>(\w+)</syllabic>", pieces.musicxml(path)) == ["begin", "middle", "end", "single"]
+    assert pieces.load_piece(path).verses[0].incipit == "erhöre uns"

@@ -153,6 +153,7 @@ def _verses(score) -> list[Verse]:
     """Lyric line numbers with the first few words of the first sung part."""
     for part in score.parts:
         words: dict[str, list[str]] = {}
+        open_word: dict[str, bool] = {}
         for n in part.flatten().notes:
             for lyric in n.lyrics:
                 key = str(lyric.number)
@@ -160,19 +161,25 @@ def _verses(score) -> list[Verse]:
                 if not text:
                     continue
                 joined = words.setdefault(key, [])
-                if joined and lyric.syllabic in ("middle", "end"):
+                # a syllable after an unfinished word continues it, whatever it is marked as
+                if joined and (open_word.get(key) or lyric.syllabic in ("middle", "end")):
                     joined[-1] += text
                 else:
                     joined.append(text)
+                open_word[key] = lyric.syllabic in ("begin", "middle")
         if words:
             return [Verse(number=k, incipit=" ".join(v[:5])) for k, v in sorted(words.items())]
     return []
 
 
 def musicxml(path: Path) -> str:
-    """The score as uncompressed MusicXML, with Finale's soft-hyphen syllables removed:
-    it exports some syllable joins as a lyric that starts with a syllable consisting of
-    only a soft hyphen, followed by an elision."""
+    """The score as uncompressed MusicXML, cleaned up for rendering:
+
+    - Finale exports some syllable joins as a lyric that starts with a syllable
+      consisting of only a soft hyphen, followed by an elision; those are removed.
+    - A syllable marked as starting a word while the previous word is unfinished is
+      remarked as continuing it ("begin" → "middle", "single" → "end"), so hyphens are
+      drawn between them."""
     if path.suffix.lower() == ".mxl":
         with zipfile.ZipFile(path) as z:
             container = ET.fromstring(z.read("META-INF/container.xml"))
@@ -193,4 +200,15 @@ def musicxml(path: Path) -> str:
         start = texts[0] - 1 if texts[0] > 0 and children[texts[0] - 1].tag == "syllabic" else texts[0]
         for c in children[start:cut]:
             lyric.remove(c)
+    for part in root.iter("part"):
+        open_word: dict[str, bool] = {}
+        for lyric in part.iter("lyric"):
+            number = lyric.get("number", "1")
+            syllabics = lyric.findall("syllabic")
+            if not syllabics:
+                continue
+            if open_word.get(number):
+                first = syllabics[0]
+                first.text = {"begin": "middle", "single": "end"}.get(first.text, first.text)
+            open_word[number] = syllabics[-1].text in ("begin", "middle")
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
