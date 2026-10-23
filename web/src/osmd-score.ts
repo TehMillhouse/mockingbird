@@ -123,18 +123,22 @@ export class OsmdScore implements ScoreView {
         for (const entry of gm.staffEntries) {
           const ticks = start + Math.round(entry.relInMeasureTimestamp.RealValue * TICKS_PER_WHOLE);
           for (const note of entry.graphicalVoiceEntries.flatMap(v => v.notes)) {
+            const src = note.sourceNote;
+            // rests do not place the cursor: a whole-bar rest sits in the middle of its bar
+            if (src.isRest()) continue;
             const heads = note.getNoteheadSVGs?.() ?? [];
             if (!heads.length) continue;
             const r = heads[0].getBoundingClientRect();
             const head = toUser(r.left, r.top + r.height / 2);
             const onset = byTicks.get(ticks);
             if (onset) {
+              // the leftmost head: a second in a chord is drawn beside the stem
+              onset.x = Math.min(onset.x, head.x);
               onset.heads.push(...heads);
             } else {
               byTicks.set(ticks, { ticks, system, x: head.x, end: head.x, heads: [...heads] });
             }
-            const src = note.sourceNote;
-            if (this.staves.includes(staff) && !src.isRest() && !src.IsCueNote && !src.IsGraceNote) {
+            if (this.staves.includes(staff) && !src.IsCueNote && !src.IsGraceNote) {
               this.targets.push({
                 index: this.targets.length, start: ticks,
                 end: ticks + Math.round(src.Length.RealValue * TICKS_PER_WHOLE),
