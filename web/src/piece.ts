@@ -66,8 +66,10 @@ async function loadPiece(id: string): Promise<void> {
 
   const sung = piece.parts.filter(p => p.sung);
   partSelect.replaceChildren(...sung.map(p => new Option(p.name, String(p.index))));
+  // the same part name if this piece has it (e.g. "Tenore II"), else the same voice
+  const name = recall("part-name");
   const voice = recall("voice");
-  const preferred = sung.find(p => p.voice === voice) ?? sung[0];
+  const preferred = sung.find(p => p.name === name) ?? sung.find(p => p.voice === voice) ?? sung[0];
   if (preferred) partSelect.value = String(preferred.index);
 
   verseSelect.replaceChildren(...piece.verses.map(v => new Option(v.incipit, v.number)));
@@ -137,6 +139,7 @@ pieceSelect.addEventListener("change", () => loadPiece(pieceSelect.value));
 partSelect.addEventListener("change", () => {
   const part = piece?.parts[myPart()];
   if (part?.voice) remember("voice", part.voice);
+  if (part) remember("part-name", part.name);
   applyMix();
   score.layout([myPart()]);
   practice.attach(score);

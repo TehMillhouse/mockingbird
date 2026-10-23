@@ -23,7 +23,7 @@ npm --prefix web run build
 ssh server mkdir -p mockingbird/models mockingbird/web mockingbird/pieces
 scp models/melody-v1.pt models/difficulty_thresholds.json server:mockingbird/models/
 scp -r web/dist/* server:mockingbird/web/
-scp data/external/practice/*.mxl server:mockingbird/pieces/
+scp data/external/practice/*.mxl data/external/practice/*.musicxml server:mockingbird/pieces/
 ```
 
 ## Service (NixOS module)
