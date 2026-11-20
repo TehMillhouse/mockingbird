@@ -13,7 +13,7 @@ and shown as `"copy_check": false` on `/health`.
 | The `mb` command | `package.nix`, built with the system's nixpkgs (CPU torch) |
 | `~/mockingbird/models/melody-v1.pt`, `difficulty_thresholds.json` | the local `models/` (not in git) |
 | `~/mockingbird/web/` | `npm --prefix web run build`, then the contents of `web/dist` |
-| `~/mockingbird/pieces/` | choir pieces as `.mxl` / `.musicxml` (not in git); the file name is the title if the score has none |
+| `~/mockingbird/pieces/` | choir pieces as `.mxl` / `.musicxml`: those in `pieces/` in the checkout, plus any kept outside git; the file name is the title if the score has none |
 
 The web app is built locally rather than in Nix: Vite and TypeScript ship prebuilt
 native binaries that would need patching inside the Nix sandbox.
@@ -23,7 +23,7 @@ npm --prefix web run build
 ssh server mkdir -p mockingbird/models mockingbird/web mockingbird/pieces
 scp models/melody-v1.pt models/difficulty_thresholds.json server:mockingbird/models/
 scp -r web/dist/* server:mockingbird/web/
-scp data/external/practice/*.mxl data/external/practice/*.musicxml server:mockingbird/pieces/
+scp pieces/*.musicxml server:mockingbird/pieces/
 ```
 
 ## Service (NixOS module)

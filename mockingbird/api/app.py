@@ -4,7 +4,7 @@
     POST /levels/warmup               GenerateRequest -> the built-in warm-up in its key and voice
     GET  /levels/{id}                 Level JSON
     GET  /levels/{id}/export?fmt=abc|musicxml|midi
-    GET  /pieces                      choir pieces in $MOCKINGBIRD_PIECES (default data/external/practice)
+    GET  /pieces                      choir pieces in $MOCKINGBIRD_PIECES (default pieces/ in the checkout)
     GET  /pieces/{id}                 Piece JSON: parts as sounding events, bars, tempo map, verses
     GET  /pieces/{id}/musicxml        the score, cleaned up for rendering
     GET  /health
@@ -29,7 +29,7 @@ from ..schema import GenerateRequest, Level
 ROOT = Path(__file__).resolve().parents[2]
 PREVIEW_PAGE = ROOT / "tools" / "abc_preview.html"
 WEB_DIST = Path(os.environ.get("MOCKINGBIRD_WEB", ROOT / "web" / "dist"))
-PIECES = Path(os.environ.get("MOCKINGBIRD_PIECES", "data/external/practice"))
+PIECES = Path(os.environ.get("MOCKINGBIRD_PIECES", ROOT / "pieces"))
 
 
 def create_app(model_path: Path | None = None) -> FastAPI:

@@ -102,14 +102,14 @@ harmonized like a generated level.
 
 ## Choir pieces
 
-The server reads MusicXML files from `$MOCKINGBIRD_PIECES` (by default
-`data/external/practice`) and serves two things per piece: playback data (each part's
-notes in ticks with ties merged, the bars, the tempo map, which parts are sung and the
-closest voice for each, the lyric lines) and the score itself as MusicXML. Finale
-writes some syllable joins as a lyric syllable consisting only of a soft hyphen plus an
-elision; those are removed before the score is served. Repeats are not expanded, so
-playback follows the score as written, like the rendered page. A file without a title
-is named after itself.
+The server reads MusicXML files from `$MOCKINGBIRD_PIECES` (by default `pieces/` in
+the checkout, whose README lists where each comes from) and serves two things per
+piece: playback data (each part's notes in ticks with ties merged, the bars, the tempo
+map, which parts are sung and the closest voice for each, the lyric lines) and the
+score itself as MusicXML. Finale writes some syllable joins as a lyric syllable
+consisting only of a soft hyphen plus an elision; those are removed before the score
+is served. Repeats are not expanded, so playback follows the score as written, like
+the rendered page. A file without a title is named after itself.
 
 The page keeps only the chosen lyric line (e.g. German or English) in the MusicXML it
 hands to OSMD. Each part is one staff here (a piano's two staves are two parts), so
