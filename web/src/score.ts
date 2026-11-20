@@ -1,6 +1,6 @@
 import abcjs from "abcjs";
 import { barTicks, type Level, TICKS_PER_QUARTER, totalTicks } from "./level";
-import type { ScoreView, Target } from "./practice";
+import { type ScoreSystem, scoreSystems, type ScoreView, type Target } from "./practice";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -32,6 +32,7 @@ export class Score implements ScoreView {
   private bars: Bar[] = [];
   private lines = new Map<number, { top: number; bottom: number }>();
   private targets: Target[] = [];
+  private systemList: ScoreSystem[] = [];
   private cursor: SVGLineElement | null = null;
   private current = -1;
 
@@ -150,6 +151,12 @@ export class Score implements ScoreView {
       const left = prev && prev.line === on.line ? (prev.right + on.left) / 2 : -Infinity;
       this.bars.push({ ticks: on.ticks, line: on.line, left });
     });
+    this.systemList = scoreSystems(this.bars.map(b => ({ ticks: b.ticks, system: b.line })),
+      this.lines);
+  }
+
+  systems(): ScoreSystem[] {
+    return this.systemList;
   }
 
   /** abcjs draws one note or rest group per melody entry, in order, on voice 0. */

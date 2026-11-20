@@ -25,6 +25,49 @@ export interface ScoreView {
   targetAt(ticks: number): Target | null;
   /** The start tick of the bar under a point on the page, or null. */
   barAt(clientX: number, clientY: number): number | null;
+  /** The systems from top to bottom. */
+  systems(): ScoreSystem[];
+}
+
+/** A system (line of music) on the rendered score. */
+export interface ScoreSystem {
+  /** The top of its first staff. */
+  top: number;
+  /** The bottom of its last staff. */
+  bottom: number;
+  /** The tick its first bar starts at. */
+  start: number;
+  /** The tick its third bar starts at (the next system's start if it has fewer bars):
+   *  from here on autoscroll brings it to the top of the window. */
+  settled: number;
+}
+
+/** Room left above a system's first staff when it is scrolled to the top, in staff
+ *  steps: for bar numbers, high notes and markings drawn above it. */
+const SCROLL_HEADROOM = 12;
+/** How long an autoscroll takes; slower than the browser's smooth scroll, which is
+ *  jarring to read along with. */
+const SCROLL_MS = 700;
+const AUTOSCROLL_KEY = "mockingbird.autoscroll";
+
+/** Systems from a score's bars (start tick and system id, in tick order) and the
+ *  vertical extent of each system's staves. */
+export function scoreSystems(bars: { ticks: number; system: number }[],
+  spans: Map<number, { top: number; bottom: number }>): ScoreSystem[] {
+  const barsBySystem = new Map<number, number[]>();
+  for (const bar of bars) {
+    const list = barsBySystem.get(bar.system) ?? [];
+    list.push(bar.ticks);
+    barsBySystem.set(bar.system, list);
+  }
+  const starts = [...barsBySystem.values()].sort((a, b) => a[0] - b[0]);
+  const ids = [...barsBySystem.keys()].sort((a, b) => barsBySystem.get(a)![0] - barsBySystem.get(b)![0]);
+  return ids.map((id, i) => ({
+    top: spans.get(id)?.top ?? 0,
+    bottom: spans.get(id)?.bottom ?? 0,
+    start: starts[i][0],
+    settled: starts[i][2] ?? starts[i + 1]?.[0] ?? Infinity,
+  }));
 }
 
 const DEVICES_HTML = `
@@ -70,6 +113,9 @@ export class Practice {
   private readonly inputPicker: DevicePicker;
   private readonly outputPicker: DevicePicker;
   private readonly el: Record<"micButton" | "readout" | "inputLevel", HTMLElement>;
+  /** Keep the playing system near the top of the window (see follow). */
+  autoscroll = false;
+  private scrolling: { from: number; to: number; start: number; at: number } | null = null;
 
   constructor(
     private readonly status: HTMLElement,
@@ -109,6 +155,16 @@ export class Practice {
       const sung = this.mic;
       this.latencies.saveRoundTrip(this.outputLabel(), sung.label, await calibrateRoundTrip(sung, m => this.progress(m)));
     }));
+
+    const autoscroll = document.querySelector<HTMLInputElement>("#autoscroll");
+    if (autoscroll) {
+      try { autoscroll.checked = localStorage.getItem(AUTOSCROLL_KEY) !== "off"; } catch { /* storage unavailable */ }
+      this.autoscroll = autoscroll.checked;
+      autoscroll.addEventListener("change", () => {
+        this.autoscroll = autoscroll.checked;
+        try { localStorage.setItem(AUTOSCROLL_KEY, autoscroll.checked ? "on" : "off"); } catch { /* storage unavailable */ }
+      });
+    }
 
     if (!canChooseOutput) $("#output-choice").hidden = true;
     Promise.all([this.inputPicker.refresh(), this.outputPicker.refresh()]).then(() => {
@@ -280,9 +336,61 @@ export class Practice {
     if (pitch && this.player.playing) this.traceSung(pitch.midi, pitch.time);
   }
 
+  /** Autoscroll: the first system whose top is in the window counts as at the top.
+   *  Once the first two bars of the system below it have been heard, that system is
+   *  scrolled to the top; if the window cannot hold both systems, as soon as playback
+   *  reaches it. Playback above the window brings its system back to the top. */
+  private follow(ticks: number): void {
+    const svg = this.score?.svg;
+    const ctm = svg?.getScreenCTM();
+    if (!this.autoscroll || !this.player.playing || !this.score || !ctm) return;
+    const systems = this.score.systems();
+    if (!systems.length) return;
+    const headroom = SCROLL_HEADROOM * this.score.staffStep;
+    // the scroll position that puts a system at the top of the window
+    const scrollFor = (s: ScoreSystem) =>
+      window.scrollY + new DOMPoint(0, s.top - headroom).matrixTransform(ctm).y;
+    const tolerance = 2; // px
+    let top = systems.findIndex(s => scrollFor(s) >= window.scrollY - tolerance);
+    if (top < 0) top = systems.length - 1;
+    const after = systems.findIndex(s => s.start > ticks);
+    const playing = Math.max(0, (after < 0 ? systems.length : after) - 1);
+    // a system's room on the page reaches to where the next one's starts (its lyrics
+    // included); with the one above it, does it fit in the window?
+    const roomEnd = (i: number) => systems[i + 1]
+      ? scrollFor(systems[i + 1])
+      : scrollFor({ ...systems[i], top: systems[i].bottom + 2 * headroom });
+    const fitsBelow = playing > 0 && roomEnd(playing) - scrollFor(systems[playing - 1]) <= window.innerHeight;
+    const arrived = !fitsBelow || ticks >= systems[playing].settled;
+    const wanted = playing < top || arrived ? playing : playing - 1;
+    if (wanted === top || (wanted < top && playing >= top)) return;
+    const limit = document.documentElement.scrollHeight - window.innerHeight;
+    const y = Math.round(Math.min(Math.max(scrollFor(systems[wanted]), 0), limit));
+    if (Math.abs(y - window.scrollY) < tolerance || this.scrolling?.to === y) return;
+    this.scrolling = { from: window.scrollY, to: y, start: performance.now(), at: window.scrollY };
+  }
+
+  /** One frame of an autoscroll, eased in and out. Scrolling by hand ends it. */
+  private stepScroll(): void {
+    const s = this.scrolling;
+    if (!s) return;
+    if (Math.abs(window.scrollY - s.at) > 2) {
+      this.scrolling = null;
+      return;
+    }
+    const t = Math.min((performance.now() - s.start) / SCROLL_MS, 1);
+    const eased = t < 0.5 ? 4 * t ** 3 : 1 - (2 - 2 * t) ** 3 / 2;
+    window.scrollTo({ top: s.from + (s.to - s.from) * eased, behavior: "instant" });
+    s.at = window.scrollY;
+    if (t === 1) this.scrolling = null;
+  }
+
   private frame(): void {
     // what is heard when this frame is seen was scheduled A − V ago
-    this.score?.moveTo(this.player.ticksAgo(this.latency.av));
+    const heard = this.player.ticksAgo(this.latency.av);
+    this.score?.moveTo(heard);
+    this.follow(heard);
+    this.stepScroll();
     const beat = this.player.countInBeat(this.latency.av);
     this.playButton.textContent = beat !== null ? String(beat) : this.player.active ? "Pause" : "Play";
     requestAnimationFrame(() => this.frame());

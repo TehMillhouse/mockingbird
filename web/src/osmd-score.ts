@@ -1,6 +1,6 @@
 import { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
 import { TICKS_PER_QUARTER } from "./level";
-import type { ScoreView, Target } from "./practice";
+import { type ScoreSystem, scoreSystems, type ScoreView, type Target } from "./practice";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TICKS_PER_WHOLE = 4 * TICKS_PER_QUARTER;
@@ -46,8 +46,9 @@ export class OsmdScore implements ScoreView {
   private readonly osmd: OpenSheetMusicDisplay;
   private onsets: Onset[] = [];
   private bars: Bar[] = [];
-  private systems = new Map<number, { top: number; bottom: number }>();
+  private systemSpans = new Map<number, { top: number; bottom: number }>();
   private targets: Target[] = [];
+  private systemList: ScoreSystem[] = [];
   private cursor: SVGLineElement | null = null;
   private current = -1;
   private staves: number[] = [];
@@ -80,8 +81,9 @@ export class OsmdScore implements ScoreView {
     this.svg = this.container.querySelector("svg");
     this.onsets = [];
     this.bars = [];
-    this.systems.clear();
+    this.systemSpans.clear();
     this.targets = [];
+    this.systemList = [];
     this.current = -1;
     if (!this.svg) return;
     const ctm = this.svg.getScreenCTM()?.inverse();
@@ -106,8 +108,8 @@ export class OsmdScore implements ScoreView {
         if (!systemIds.has(sysObj)) systemIds.set(sysObj, systemIds.size);
         const system = systemIds.get(sysObj)!;
         const lineTop = uy(gm.ParentStaffLine.PositionAndShape.AbsolutePosition.y);
-        const span = this.systems.get(system);
-        this.systems.set(system, {
+        const span = this.systemSpans.get(system);
+        this.systemSpans.set(system, {
           top: Math.min(span?.top ?? Infinity, lineTop),
           bottom: Math.max(span?.bottom ?? -Infinity, lineTop + 4 * scale),
         });
@@ -158,9 +160,15 @@ export class OsmdScore implements ScoreView {
       on.end = next && next.system === on.system ? next.x : bar?.right ?? on.x;
     });
 
+    this.systemList = scoreSystems(this.bars, this.systemSpans);
+
     this.cursor = this.svg.appendChild(document.createElementNS(SVG_NS, "line"));
     this.cursor.classList.add("cursor");
     this.moveTo(0);
+  }
+
+  systems(): ScoreSystem[] {
+    return this.systemList;
   }
 
   targetAt(ticks: number): Target | null {
@@ -183,7 +191,7 @@ export class OsmdScore implements ScoreView {
     const on = this.onsets[i];
     if (!on || !this.cursor) return;
     const x = String(this.xAt(ticks));
-    const span = this.systems.get(on.system);
+    const span = this.systemSpans.get(on.system);
     this.cursor.setAttribute("x1", x);
     this.cursor.setAttribute("x2", x);
     this.cursor.setAttribute("y1", String(span?.top ?? 0));
@@ -201,7 +209,7 @@ export class OsmdScore implements ScoreView {
     const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
     let system: number | null = null;
     let best = 3 * this.staffStep * 2; // how far above or below a system a tap still counts
-    for (const [n, { top, bottom }] of this.systems) {
+    for (const [n, { top, bottom }] of this.systemSpans) {
       const distance = p.y < top ? top - p.y : p.y > bottom ? p.y - bottom : 0;
       if (distance < best) [system, best] = [n, distance];
     }

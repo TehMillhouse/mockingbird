@@ -77,6 +77,23 @@ was playing. A bar reaches from halfway between its first onset and the previous
 note to the same point before the next bar. The pitch trace from that bar on is
 removed, so the next pass draws on a clean score.
 
+With autoscroll on (the default; the choice is remembered in the browser), the page
+follows playback a system at a time. The system at the top is the first one whose top
+is in the window. Once the first two bars of the system below it have been heard, that
+system is scrolled to the top, with twelve staff steps of room above its first staff;
+a system of one or two bars moves up when it ends. When the window cannot hold that
+system together with the one above it (an eight-part score, say), it moves up as soon
+as playback reaches it instead. A system's room reaches from its top to the next
+system's top, so the lyrics under its last staff count; the last system's reaches the
+same distance below its last staff as is kept above the first. Playback further down
+(after scrolling back up by hand or tapping a later bar) catches up the same way, and
+playback above the window brings its system back to the top. "Heard" is the cursor's
+tick, so the scroll waits for the sound, not the scheduler.
+
+The scroll is animated by the page itself, eased in and out over 0.7 s: the browser's
+smooth scroll is quicker and has no duration setting, and is jarring to read along
+with. Scrolling by hand during the animation ends it.
+
 The warm-up (`POST /levels/warmup`) is a fixed sequence of exercises on scale
 degrees: the scale up and down, steps out from the tonic and back, the same down
 from the upper tonic as a pedal point, the tonic arpeggio, and thirds. It is placed in
