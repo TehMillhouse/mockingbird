@@ -36,7 +36,12 @@ and separate stems for mixing.
 
 | Module | Role |
 |---|---|
-| `practice.ts` | What both pages share: player, microphone, pitch trace, devices, calibration, cursor, keys; the `ScoreView` interface a renderer implements |
+| `practice.ts` | What both pages share around one score: player, microphone, pitch trace, devices, latencies, cursor, practice keys |
+| `score-view.ts` | The `ScoreView` interface a renderer implements, and its systems |
+| `autoscroll.ts` | Keeps the playing system near the top of the window |
+| `calibration.ts` | The latency calibration dialog |
+| `page.ts` | Page helpers: sliders and keyboard shortcuts |
+| `storage.ts` | Settings remembered in the browser |
 | `level.ts` | Level types (mirrors `schema.py`), fetching, level → bars and melody events |
 | `audio.ts` | The shared AudioContext and output routing |
 | `devices.ts` | Input and output device pickers |
@@ -46,7 +51,7 @@ and separate stems for mixing.
 | `osmd-score.ts` | `ScoreView` for pieces: the same from OSMD's layout |
 | `pitch.ts` | Microphone input and pitch detection |
 | `overlay.ts` | The pitch trace drawn into the score's SVG |
-| `latency.ts` | Calibration procedures and stored offsets |
+| `latency.ts` | Calibration measurements and stored offsets |
 | `main.ts`, `piece.ts` | Each page's own controls |
 
 Output device choice needs `AudioContext.setSinkId`, which only the native context

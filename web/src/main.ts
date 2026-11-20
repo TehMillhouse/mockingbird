@@ -1,10 +1,11 @@
 import * as Tone from "tone";
 import { fetchLevel, type Level, levelBars, type LevelRequest, melodyEvents, totalTicks } from "./level";
+import { $, bindKeys, nudge, showValue } from "./page";
 import { Practice } from "./practice";
 import { Score } from "./score";
+import { recallJson, rememberJson } from "./storage";
 import { Instruments } from "./synth";
 
-const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const form = $<HTMLFormElement>("#level");
 const status = $<HTMLParagraphElement>("#status");
 const playButton = $<HTMLButtonElement>("#play");
@@ -20,27 +21,18 @@ const score = new Score($("#paper"));
 let level: Level | null = null;
 let tempoTouched = false;
 
-const FORM_KEY = "mockingbird.level-form";
+const FORM_KEY = "level-form";
 
 function restoreForm(): void {
-  try {
-    const saved = JSON.parse(localStorage.getItem(FORM_KEY) ?? "{}") as Record<string, string>;
-    for (const [name, value] of Object.entries(saved)) {
-      const field = form.elements.namedItem(name) as HTMLSelectElement | null;
-      if (field) field.value = value;
-    }
-  } catch {
-    // storage unavailable: keep the defaults
+  for (const [name, value] of Object.entries(recallJson<Record<string, string>>(FORM_KEY))) {
+    const field = form.elements.namedItem(name) as HTMLSelectElement | null;
+    if (field && typeof value === "string") field.value = value;
   }
 }
 
 function readForm(): LevelRequest {
   const data = Object.fromEntries(new FormData(form)) as Record<string, string>;
-  try {
-    localStorage.setItem(FORM_KEY, JSON.stringify(data));
-  } catch {
-    // storage unavailable: nothing to remember
-  }
+  rememberJson(FORM_KEY, data);
   return { tonic: data.tonic, mode: data.mode, voice: data.voice, difficulty: Number(data.difficulty) };
 }
 
@@ -82,18 +74,13 @@ async function newLevel(kind: "generated" | "warmup" = "generated"): Promise<voi
 function applyVolume(which: "voice" | "piano"): void {
   const slider = sliders[which];
   instruments.setVolume(which, Number(slider.value) / 100);
-  (slider.nextElementSibling as HTMLOutputElement).value = `${slider.value}%`;
+  showValue(slider, `${slider.value}%`);
 }
 
 /** The slider is in beats per minute; the player scales the level's written tempo. */
 function applyTempo(): void {
   if (level) practice.player.tempoScale = Number(sliders.tempo.value) / level.tempo_bpm;
-  (sliders.tempo.nextElementSibling as HTMLOutputElement).value = `${sliders.tempo.value}`;
-}
-
-function nudge(slider: HTMLInputElement, delta: number): void {
-  slider.value = String(Number(slider.value) + delta); // the browser clamps to min/max
-  slider.dispatchEvent(new Event("input"));
+  showValue(sliders.tempo, sliders.tempo.value);
 }
 
 sliders.voice.addEventListener("input", () => applyVolume("voice"));
@@ -102,25 +89,13 @@ sliders.tempo.addEventListener("input", () => { tempoTouched = true; applyTempo(
 $("#warmup").addEventListener("click", () => newLevel("warmup"));
 form.addEventListener("submit", e => { e.preventDefault(); newLevel(); });
 
-document.addEventListener("keydown", e => {
-  if (practice.busy || e.target instanceof HTMLSelectElement || e.ctrlKey || e.metaKey || e.altKey) return;
-  const actions: Record<string, () => void> = {
-    ...practice.keys,
-    "+": () => nudge(sliders.tempo, 5),
-    "=": () => nudge(sliders.tempo, 5),
-    "-": () => nudge(sliders.tempo, -5),
-    g: () => newLevel(),
-    w: () => newLevel("warmup"),
-    "[": () => nudge(sliders.voice, -10),
-    "]": () => nudge(sliders.voice, 10),
-    ";": () => nudge(sliders.piano, -10),
-    "'": () => nudge(sliders.piano, 10),
-  };
-  const action = actions[e.key.toLowerCase()];
-  if (!action) return;
-  e.preventDefault();
-  (document.activeElement as HTMLElement | null)?.blur();
-  action();
+bindKeys(practice, sliders.tempo, {
+  g: () => newLevel(),
+  w: () => newLevel("warmup"),
+  "[": () => nudge(sliders.voice, -10),
+  "]": () => nudge(sliders.voice, 10),
+  ";": () => nudge(sliders.piano, -10),
+  "'": () => nudge(sliders.piano, 10),
 });
 
 restoreForm();

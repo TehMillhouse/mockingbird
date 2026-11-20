@@ -1,6 +1,7 @@
 import * as Tone from "tone";
 import { audioContext } from "./audio";
 import type { Mic } from "./pitch";
+import { recallJson, rememberJson } from "./storage";
 import { makeClicker } from "./synth";
 
 /** Seconds between calibration clicks or flashes. */
@@ -14,7 +15,7 @@ const TAP_WINDOW = 0.25;
 /** Calibrated offsets in seconds, keyed by device labels, since each device has its
  *  own latency. */
 export class LatencyStore {
-  private static readonly KEY = "mockingbird.latency";
+  private static readonly KEY = "latency";
 
   /** A − V: how much later a sound is perceived than a frame drawn at the moment it
    *  was scheduled. */
@@ -35,20 +36,12 @@ export class LatencyStore {
     this.save(`rt|${output}|${input}`, seconds);
   }
 
-  private load(): Record<string, number> {
-    try {
-      return JSON.parse(localStorage.getItem(LatencyStore.KEY) ?? "{}");
-    } catch {
-      return {};
-    }
+  private load(): Partial<Record<string, number>> {
+    return recallJson<Record<string, number>>(LatencyStore.KEY);
   }
 
   private save(key: string, seconds: number): void {
-    try {
-      localStorage.setItem(LatencyStore.KEY, JSON.stringify({ ...this.load(), [key]: seconds }));
-    } catch {
-      // storage unavailable: the calibration lasts for this visit only
-    }
+    rememberJson(LatencyStore.KEY, { ...this.load(), [key]: seconds });
   }
 }
 

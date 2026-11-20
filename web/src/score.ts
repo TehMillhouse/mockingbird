@@ -1,6 +1,6 @@
 import abcjs from "abcjs";
 import { barTicks, type Level, TICKS_PER_QUARTER, totalTicks } from "./level";
-import { type ScoreSystem, scoreSystems, type ScoreView, type Target } from "./practice";
+import { type ScoreSystem, scoreSystems, type ScoreView, type Target } from "./score-view";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 

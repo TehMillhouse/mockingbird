@@ -1,74 +1,13 @@
 import * as Tone from "tone";
 import { audioContext, canChooseOutput, setOutputDevice } from "./audio";
+import { Autoscroll } from "./autoscroll";
+import { Calibration } from "./calibration";
 import { DevicePicker } from "./devices";
-import { calibrateAv, calibrateRoundTrip, LatencyStore } from "./latency";
+import { LatencyStore } from "./latency";
 import { Trace } from "./overlay";
 import { Mic } from "./pitch";
+import type { ScoreView } from "./score-view";
 import { Player } from "./transport";
-
-/** A melody note the singer is meant to hit: its tick span and its note head. */
-export interface Target {
-  index: number;
-  start: number;
-  end: number;
-  pitch: number;
-  headY: number;
-}
-
-/** What the practice machinery needs from rendered notation, in the SVG's units. */
-export interface ScoreView {
-  readonly svg: SVGSVGElement | null;
-  /** Distance between adjacent staff positions (line to space). */
-  readonly staffStep: number;
-  moveTo(ticks: number): void;
-  xAt(ticks: number): number;
-  targetAt(ticks: number): Target | null;
-  /** The start tick of the bar under a point on the page, or null. */
-  barAt(clientX: number, clientY: number): number | null;
-  /** The systems from top to bottom. */
-  systems(): ScoreSystem[];
-}
-
-/** A system (line of music) on the rendered score. */
-export interface ScoreSystem {
-  /** The top of its first staff. */
-  top: number;
-  /** The bottom of its last staff. */
-  bottom: number;
-  /** The tick its first bar starts at. */
-  start: number;
-  /** The tick its third bar starts at (the next system's start if it has fewer bars):
-   *  from here on autoscroll brings it to the top of the window. */
-  settled: number;
-}
-
-/** Room left above a system's first staff when it is scrolled to the top, in staff
- *  steps: for bar numbers, high notes and markings drawn above it. */
-const SCROLL_HEADROOM = 12;
-/** How long an autoscroll takes; slower than the browser's smooth scroll, which is
- *  jarring to read along with. */
-const SCROLL_MS = 700;
-const AUTOSCROLL_KEY = "mockingbird.autoscroll";
-
-/** Systems from a score's bars (start tick and system id, in tick order) and the
- *  vertical extent of each system's staves. */
-export function scoreSystems(bars: { ticks: number; system: number }[],
-  spans: Map<number, { top: number; bottom: number }>): ScoreSystem[] {
-  const barsBySystem = new Map<number, number[]>();
-  for (const bar of bars) {
-    const list = barsBySystem.get(bar.system) ?? [];
-    list.push(bar.ticks);
-    barsBySystem.set(bar.system, list);
-  }
-  const starts = [...barsBySystem.values()].sort((a, b) => a[0] - b[0]);
-  const ids = [...barsBySystem.keys()].sort((a, b) => barsBySystem.get(a)![0] - barsBySystem.get(b)![0]);
-  return ids.map((id, i) => ({
-    top: spans.get(id)?.top ?? 0,
-    bottom: spans.get(id)?.bottom ?? 0,
-    start: starts[i][0],
-    settled: starts[i][2] ?? starts[i + 1]?.[0] ?? Infinity,
-  }));
-}
 
 const DEVICES_HTML = `
   <label>Microphone <select id="input"></select></label>
@@ -78,29 +17,12 @@ const DEVICES_HTML = `
   <label id="output-choice">Output <select id="output"></select></label>
   <button id="calibrate" type="button">Calibrate</button>`;
 
-const CALIBRATION_HTML = `
-  <h2>Latency calibration</h2>
-  <p id="cal-progress"></p>
-  <section>
-    <h3>Picture and sound</h3>
-    <p>Lines the cursor up with what you hear. Tap <kbd>Space</kbd> (or the box) with each
-      click, then with each flash.</p>
-    <div id="flash">tap</div>
-    <p><button id="cal-av" type="button">Start</button> <output id="cal-av-result"></output></p>
-  </section>
-  <section>
-    <h3>Microphone</h3>
-    <p>Lines your pitch trace up with the notes. Clap with each click, close to the microphone.</p>
-    <p><button id="cal-rt" type="button">Start</button> <output id="cal-rt-result"></output></p>
-  </section>
-  <form method="dialog"><button>Close</button></form>`;
-
 const NOTE_NAMES = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
 // Pitch is sampled on a fixed clock, independent of the display's frame rate.
 const PITCH_INTERVAL_MS = 10;
 
-/** Playback, microphone, pitch trace and latency calibration around one rendered
- *  score at a time; shared by the level trainer and the piece practice page. */
+/** Playback, microphone, pitch trace, latency calibration and autoscroll around one
+ *  rendered score at a time; shared by the level trainer and the piece practice page. */
 export class Practice {
   readonly player = new Player();
   readonly trace = new Trace();
@@ -109,13 +31,11 @@ export class Practice {
   private readonly latencies = new LatencyStore();
   /** Current offsets in seconds, from calibration or else the browser's estimates. */
   private readonly latency = { av: 0, avCalibrated: false, roundTrip: 0, roundTripCalibrated: false };
-  private readonly calibration: HTMLDialogElement;
+  private readonly calibration: Calibration;
+  private readonly autoscroll: Autoscroll;
   private readonly inputPicker: DevicePicker;
   private readonly outputPicker: DevicePicker;
-  private readonly el: Record<"micButton" | "readout" | "inputLevel", HTMLElement>;
-  /** Keep the playing system near the top of the window (see follow). */
-  autoscroll = false;
-  private scrolling: { from: number; to: number; start: number; at: number } | null = null;
+  private readonly el: { micButton: HTMLButtonElement; readout: HTMLOutputElement; inputLevel: HTMLMeterElement };
 
   constructor(
     private readonly status: HTMLElement,
@@ -124,13 +44,21 @@ export class Practice {
     devices: HTMLElement,
   ) {
     devices.innerHTML = DEVICES_HTML;
-    this.calibration = document.body.appendChild(document.createElement("dialog"));
-    this.calibration.id = "calibration";
-    this.calibration.innerHTML = CALIBRATION_HTML;
     const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
     this.el = { micButton: $("#mic"), readout: $("#sung"), inputLevel: $("#input-level") };
-    this.inputPicker = new DevicePicker($("#input"), "audioinput", "mockingbird.input-device");
-    this.outputPicker = new DevicePicker($("#output"), "audiooutput", "mockingbird.output-device");
+    this.inputPicker = new DevicePicker($("#input"), "audioinput", "input-device");
+    this.outputPicker = new DevicePicker($("#output"), "audiooutput", "output-device");
+    this.autoscroll = new Autoscroll(document.querySelector<HTMLInputElement>("#autoscroll"));
+    this.calibration = new Calibration($("#calibrate"), {
+      stop: () => this.player.stop(),
+      mic: async () => {
+        if (!this.mic) await this.openMic();
+        return this.mic;
+      },
+      saveAv: seconds => this.latencies.saveAv(this.outputLabel(), seconds),
+      saveRoundTrip: (mic, seconds) => this.latencies.saveRoundTrip(this.outputLabel(), mic.label, seconds),
+      refresh: () => this.refreshLatency(),
+    });
 
     playButton.addEventListener("click", () => this.togglePlay());
     paper.addEventListener("click", e => this.seekToBar(e));
@@ -141,30 +69,6 @@ export class Practice {
       this.inputPicker.refresh();
       this.outputPicker.refresh();
     });
-    $("#calibrate").addEventListener("click", () => {
-      this.refreshLatency();
-      this.progress("Wear the headphones you sing with.");
-      this.calibration.showModal();
-    });
-    $("#cal-av").addEventListener("click", e => this.runCalibration(e.currentTarget as HTMLButtonElement, async () => {
-      this.latencies.saveAv(this.outputLabel(), await calibrateAv($("#flash"), m => this.progress(m)));
-    }));
-    $("#cal-rt").addEventListener("click", e => this.runCalibration(e.currentTarget as HTMLButtonElement, async () => {
-      if (!this.mic) await this.openMic();
-      if (!this.mic) throw new Error("no microphone");
-      const sung = this.mic;
-      this.latencies.saveRoundTrip(this.outputLabel(), sung.label, await calibrateRoundTrip(sung, m => this.progress(m)));
-    }));
-
-    const autoscroll = document.querySelector<HTMLInputElement>("#autoscroll");
-    if (autoscroll) {
-      try { autoscroll.checked = localStorage.getItem(AUTOSCROLL_KEY) !== "off"; } catch { /* storage unavailable */ }
-      this.autoscroll = autoscroll.checked;
-      autoscroll.addEventListener("change", () => {
-        this.autoscroll = autoscroll.checked;
-        try { localStorage.setItem(AUTOSCROLL_KEY, autoscroll.checked ? "on" : "off"); } catch { /* storage unavailable */ }
-      });
-    }
 
     if (!canChooseOutput) $("#output-choice").hidden = true;
     Promise.all([this.inputPicker.refresh(), this.outputPicker.refresh()]).then(() => {
@@ -250,7 +154,7 @@ export class Practice {
     this.el.micButton.textContent = this.mic ? "Mic on" : "Mic off";
     this.el.micButton.classList.toggle("on", this.mic !== null);
     this.el.inputLevel.hidden = this.mic === null;
-    if (!this.mic) (this.el.readout as HTMLOutputElement).value = "";
+    if (!this.mic) this.el.readout.value = "";
   }
 
   private async chooseOutput(): Promise<void> {
@@ -274,44 +178,20 @@ export class Practice {
     const roundTrip = this.mic ? this.latencies.roundTrip(this.outputLabel(), this.mic.label) : undefined;
     this.latency.roundTrip = roundTrip ?? reported + (this.mic?.reportedLatency ?? 0);
     this.latency.roundTripCalibrated = roundTrip !== undefined;
-    const ms = (s: number) => `${Math.round(s * 1000)} ms`;
-    const source = (calibrated: boolean) => (calibrated ? "(calibrated)" : "(browser estimate)");
-    (document.querySelector("#cal-av-result") as HTMLOutputElement).value =
-      `${ms(this.latency.av)} ${source(this.latency.avCalibrated)}`;
-    (document.querySelector("#cal-rt-result") as HTMLOutputElement).value = this.mic
-      ? `${ms(this.latency.roundTrip)} ${source(this.latency.roundTripCalibrated)}`
-      : "turn the microphone on first";
-  }
-
-  private progress(message: string): void {
-    (document.querySelector("#cal-progress") as HTMLElement).textContent = message;
-  }
-
-  private async runCalibration(button: HTMLButtonElement, run: () => Promise<void>): Promise<void> {
-    this.player.stop();
-    const buttons = this.calibration.querySelectorAll("button");
-    buttons.forEach(b => (b.disabled = true));
-    try {
-      await run();
-      this.progress("Saved.");
-    } catch (e) {
-      this.progress(`Calibration failed: ${e instanceof Error ? e.message : e}`);
-    }
-    buttons.forEach(b => (b.disabled = false));
-    button.focus();
-    this.refreshLatency();
+    this.calibration.show(
+      { seconds: this.latency.av, calibrated: this.latency.avCalibrated },
+      this.mic ? { seconds: this.latency.roundTrip, calibrated: this.latency.roundTripCalibrated } : null);
   }
 
   private showSung(midi: number | null): void {
-    const readout = this.el.readout as HTMLOutputElement;
     if (midi === null) {
-      readout.value = "–";
+      this.el.readout.value = "–";
       return;
     }
     const nearest = Math.round(midi);
     const cents = Math.round((midi - nearest) * 100);
     const name = NOTE_NAMES[((nearest % 12) + 12) % 12] + (Math.floor(nearest / 12) - 1);
-    readout.value = `${name} ${cents >= 0 ? "+" : "−"}${Math.abs(cents)}¢`;
+    this.el.readout.value = `${name} ${cents >= 0 ? "+" : "−"}${Math.abs(cents)}¢`;
   }
 
   /** Place the sung pitch against the note that was sounding when it was sung. The
@@ -331,66 +211,16 @@ export class Practice {
   private listen(): void {
     if (!this.mic) return;
     const { db, pitch } = this.mic.read();
-    (this.el.inputLevel as HTMLMeterElement).value = db;
+    this.el.inputLevel.value = db;
     this.showSung(pitch?.midi ?? null);
     if (pitch && this.player.playing) this.traceSung(pitch.midi, pitch.time);
-  }
-
-  /** Autoscroll: the first system whose top is in the window counts as at the top.
-   *  Once the first two bars of the system below it have been heard, that system is
-   *  scrolled to the top; if the window cannot hold both systems, as soon as playback
-   *  reaches it. Playback above the window brings its system back to the top. */
-  private follow(ticks: number): void {
-    const svg = this.score?.svg;
-    const ctm = svg?.getScreenCTM();
-    if (!this.autoscroll || !this.player.playing || !this.score || !ctm) return;
-    const systems = this.score.systems();
-    if (!systems.length) return;
-    const headroom = SCROLL_HEADROOM * this.score.staffStep;
-    // the scroll position that puts a system at the top of the window
-    const scrollFor = (s: ScoreSystem) =>
-      window.scrollY + new DOMPoint(0, s.top - headroom).matrixTransform(ctm).y;
-    const tolerance = 2; // px
-    let top = systems.findIndex(s => scrollFor(s) >= window.scrollY - tolerance);
-    if (top < 0) top = systems.length - 1;
-    const after = systems.findIndex(s => s.start > ticks);
-    const playing = Math.max(0, (after < 0 ? systems.length : after) - 1);
-    // a system's room on the page reaches to where the next one's starts (its lyrics
-    // included); with the one above it, does it fit in the window?
-    const roomEnd = (i: number) => systems[i + 1]
-      ? scrollFor(systems[i + 1])
-      : scrollFor({ ...systems[i], top: systems[i].bottom + 2 * headroom });
-    const fitsBelow = playing > 0 && roomEnd(playing) - scrollFor(systems[playing - 1]) <= window.innerHeight;
-    const arrived = !fitsBelow || ticks >= systems[playing].settled;
-    const wanted = playing < top || arrived ? playing : playing - 1;
-    if (wanted === top || (wanted < top && playing >= top)) return;
-    const limit = document.documentElement.scrollHeight - window.innerHeight;
-    const y = Math.round(Math.min(Math.max(scrollFor(systems[wanted]), 0), limit));
-    if (Math.abs(y - window.scrollY) < tolerance || this.scrolling?.to === y) return;
-    this.scrolling = { from: window.scrollY, to: y, start: performance.now(), at: window.scrollY };
-  }
-
-  /** One frame of an autoscroll, eased in and out. Scrolling by hand ends it. */
-  private stepScroll(): void {
-    const s = this.scrolling;
-    if (!s) return;
-    if (Math.abs(window.scrollY - s.at) > 2) {
-      this.scrolling = null;
-      return;
-    }
-    const t = Math.min((performance.now() - s.start) / SCROLL_MS, 1);
-    const eased = t < 0.5 ? 4 * t ** 3 : 1 - (2 - 2 * t) ** 3 / 2;
-    window.scrollTo({ top: s.from + (s.to - s.from) * eased, behavior: "instant" });
-    s.at = window.scrollY;
-    if (t === 1) this.scrolling = null;
   }
 
   private frame(): void {
     // what is heard when this frame is seen was scheduled A − V ago
     const heard = this.player.ticksAgo(this.latency.av);
     this.score?.moveTo(heard);
-    this.follow(heard);
-    this.stepScroll();
+    this.autoscroll.update(this.score, heard, this.player.playing);
     const beat = this.player.countInBeat(this.latency.av);
     this.playButton.textContent = beat !== null ? String(beat) : this.player.active ? "Pause" : "Play";
     requestAnimationFrame(() => this.frame());

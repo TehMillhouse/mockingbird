@@ -1,6 +1,8 @@
 import * as Tone from "tone";
 import { OsmdScore } from "./osmd-score";
+import { $, bindKeys, showValue } from "./page";
 import { Practice } from "./practice";
+import { recall, remember } from "./storage";
 import { PartInstruments, type Voicing } from "./synth";
 
 /** Mirrors mockingbird/pieces.py. Times are ticks, 24 per quarter note. */
@@ -15,7 +17,6 @@ interface Piece {
   verses: { number: string; incipit: string }[];
 }
 
-const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const status = $<HTMLParagraphElement>("#status");
 const playButton = $<HTMLButtonElement>("#play");
 const pieceSelect = $<HTMLSelectElement>("#piece");
@@ -34,13 +35,6 @@ const practice = new Practice(status, playButton, $("#paper"), $("#devices"));
 const score = new OsmdScore($("#paper"));
 let piece: Piece | null = null;
 let musicxml = "";
-
-const remember = (key: string, value: string) => {
-  try { localStorage.setItem(`mockingbird.${key}`, value); } catch { /* storage unavailable */ }
-};
-const recall = (key: string) => {
-  try { return localStorage.getItem(`mockingbird.${key}`); } catch { return null; }
-};
 
 async function loadPieceList(): Promise<void> {
   const list: { id: string; title: string; composer: string | null }[] = await (await fetch("pieces")).json();
@@ -119,21 +113,13 @@ function myPart(): number {
 function applyMix(): void {
   const volume = (s: HTMLInputElement) => Number(s.value) / 100;
   instruments.mix(myPart(), { mine: volume(sliders.mine), choir: volume(sliders.choir), piano: volume(sliders.piano) });
-  for (const s of [sliders.mine, sliders.choir, sliders.piano]) {
-    (s.nextElementSibling as HTMLOutputElement).value = `${s.value}%`;
-  }
+  for (const s of [sliders.mine, sliders.choir, sliders.piano]) showValue(s, `${s.value}%`);
 }
 
 function applyTempo(): void {
   practice.player.tempoScale = Number(sliders.tempo.value) / 100;
   const bpm = piece ? Math.round((piece.tempos[0]?.bpm ?? 100) * Number(sliders.tempo.value) / 100) : null;
-  (sliders.tempo.nextElementSibling as HTMLOutputElement).value =
-    `${sliders.tempo.value}%${bpm !== null ? ` (♩ ${bpm})` : ""}`;
-}
-
-function nudge(slider: HTMLInputElement, delta: number): void {
-  slider.value = String(Number(slider.value) + delta); // the browser clamps to min/max
-  slider.dispatchEvent(new Event("input"));
+  showValue(sliders.tempo, `${sliders.tempo.value}%${bpm !== null ? ` (♩ ${bpm})` : ""}`);
 }
 
 pieceSelect.addEventListener("change", () => loadPiece(pieceSelect.value));
@@ -172,20 +158,7 @@ window.addEventListener("resize", () => {
   }, 250);
 });
 
-document.addEventListener("keydown", e => {
-  if (practice.busy || e.target instanceof HTMLSelectElement || e.ctrlKey || e.metaKey || e.altKey) return;
-  const actions: Record<string, () => void> = {
-    ...practice.keys,
-    "+": () => nudge(sliders.tempo, 5),
-    "=": () => nudge(sliders.tempo, 5),
-    "-": () => nudge(sliders.tempo, -5),
-  };
-  const action = actions[e.key.toLowerCase()];
-  if (!action) return;
-  e.preventDefault();
-  (document.activeElement as HTMLElement | null)?.blur();
-  action();
-});
+bindKeys(practice, sliders.tempo, {});
 
 loadPieceList().catch(e => { status.textContent = `Could not load pieces: ${e instanceof Error ? e.message : e}`; });
 Tone.loaded();

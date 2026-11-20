@@ -1,6 +1,6 @@
 import { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
 import { TICKS_PER_QUARTER } from "./level";
-import { type ScoreSystem, scoreSystems, type ScoreView, type Target } from "./practice";
+import { type ScoreSystem, scoreSystems, type ScoreView, type Target } from "./score-view";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TICKS_PER_WHOLE = 4 * TICKS_PER_QUARTER;
