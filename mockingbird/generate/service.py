@@ -23,6 +23,10 @@ CANDIDATES = 8
 log = logging.getLogger(__name__)
 
 
+class GenerationFailed(RuntimeError):
+    """No sampled melody passed the filters."""
+
+
 def _ends_with_rest_bar(ph: Phrase) -> bool:
     bt = bar_ticks(ph.meter)
     ticks = 0
@@ -102,12 +106,9 @@ class LevelGenerator:
     def generate(self, req: GenerateRequest) -> Level:
         style = req.style or "folk"
         prefix = tk.prefix_tokens(req.mode, req.meter, req.difficulty, style, req.voice)
-        try:
-            state = ConstraintState(mode=req.mode, meter=req.meter, voice=req.voice,
-                                    difficulty=req.difficulty, bars=req.bars,
-                                    phrase_bars=req.phrase_bars)
-        except ValueError as e:
-            raise RuntimeError(str(e)) from e
+        state = ConstraintState(mode=req.mode, meter=req.meter, voice=req.voice,
+                                difficulty=req.difficulty, bars=req.bars,
+                                phrase_bars=req.phrase_bars)
         temperature = 0.9 if req.difficulty <= 2 else 1.0
         lo_s, hi_s = self.thresholds.bucket_range(req.difficulty, style)
         centre = (lo_s + hi_s) / 2
@@ -150,7 +151,7 @@ class LevelGenerator:
                 temperature += 0.1 if all(difficulty.score(p) < lo_s for _, _, p in scored) else -0.1
                 temperature = min(1.3, max(0.6, temperature))
         if best is None:
-            raise RuntimeError("no valid melody sampled; try another seed or fewer constraints")
+            raise GenerationFailed("no valid melody sampled; try another seed or fewer constraints")
         phrase = best[1]
         return self.finish(phrase, req, style)
 
@@ -167,7 +168,7 @@ class LevelGenerator:
         `shift`), then harmonize, voice-lead and render the accompaniment in concert
         pitch."""
         if req.accompaniment not in TEXTURES:
-            raise RuntimeError(f"accompaniment must be one of {TEXTURES}")
+            raise ValueError(f"accompaniment must be one of {TEXTURES}")
         offset = frame_offset(req.tonic, req.mode)
         lo, hi = VOICE_RANGES[req.voice]
         pitched = [n.pitch for n in phrase.notes if n.pitch is not None]
