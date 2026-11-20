@@ -40,7 +40,7 @@ and separate stems for mixing.
 | `level.ts` | Level types (mirrors `schema.py`), fetching, level → bars and melody events |
 | `audio.ts` | The shared AudioContext and output routing |
 | `devices.ts` | Input and output device pickers |
-| `synth.ts` | Voice guide (mono synth) and piano (sampled) for levels; a synth per sung part for pieces; each behind its own gain node |
+| `synth.ts` | Voice guide (mono synth) and piano (sampled) for levels; per sung part of a piece a choir sampler and a synth; each part behind its own gain node |
 | `transport.ts` | Schedules an arrangement (tracks, bars, tempo map) on Tone.js's transport in ticks; count-in, pause and seeking |
 | `score.ts` | `ScoreView` for levels: abcjs rendering, ticks → positions, cursor, melody note heads |
 | `osmd-score.ts` | `ScoreView` for pieces: the same from OSMD's layout |
@@ -97,8 +97,23 @@ is named after itself.
 The page keeps only the chosen lyric line (e.g. German or English) in the MusicXML it
 hands to OSMD. Each part is one staff here (a piano's two staves are two parts), so
 part indices are staff indices. Mix: your part, the other voices together, and the
-piano. Tempo is a percentage of the written tempo map. Your part, its voice and each
-piece's text choice are remembered in the browser.
+piano. Tempo is a percentage of the written tempo map. Your part, its voice, the
+voicing and each piece's text choice are remembered in the browser.
+
+Voicing picks how sung parts sound: all as a choir, only your part as a choir and the
+others as the synth, the reverse, or all as the synth; it can change during playback;
+the accompaniment is always the sampled piano. The default is your part as the synth
+over a choir, which keeps your line distinct. The choir is "Choir Aahs" from the
+FluidR3 General MIDI soundfont (Frank Wen, CC BY 3.0) as rendered per note by the
+midi-js-soundfonts project, one sample every three semitones from C2 to C6. Each file
+is a 3.1 s sustained tone that ends abruptly, so on load its tail is crossfaded into
+the audio before 0.6 s and the note loops between 0.6 s and 2.9 s for as long as it
+lasts. The samples are scaled to a common level. Until they have arrived, sung parts
+use the synth.
+
+Tied notes sound once, also where a syllable falls on the tied-over note (an inner
+voice holding its pitch while the text moves on); only notes without a tie are
+sounded again.
 
 OSMD lays out in staff spaces; a bar's ticks come from its measure's absolute
 timestamp, an onset's from the bar plus the staff entry's offset. Positions are read

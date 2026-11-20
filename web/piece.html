@@ -17,6 +17,12 @@
   <div id="controls">
     <label>My part <input id="mine" type="range" min="0" max="100" value="50"><output for="mine"></output></label>
     <label>Other voices <input id="choir" type="range" min="0" max="100" value="40"><output for="choir"></output></label>
+    <label>Voices <select id="voicing">
+      <option value="all-sung">All sung</option>
+      <option value="mine-sung">Mine sung, rest synth</option>
+      <option value="mine-synth" selected>Mine synth, rest sung</option>
+      <option value="all-synth">All synth</option>
+    </select></label>
     <label>Piano <input id="piano" type="range" min="0" max="100" value="60"><output for="piano"></output></label>
     <label>Tempo <input id="tempo" type="range" min="50" max="150" step="5" value="100"><output for="tempo"></output></label>
     <button id="play" type="button" disabled>Play</button>

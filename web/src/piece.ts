@@ -1,7 +1,7 @@
 import * as Tone from "tone";
 import { OsmdScore } from "./osmd-score";
 import { Practice } from "./practice";
-import { PartInstruments } from "./synth";
+import { PartInstruments, type Voicing } from "./synth";
 
 /** Mirrors mockingbird/pieces.py. Times are ticks, 24 per quarter note. */
 interface Piece {
@@ -21,6 +21,7 @@ const playButton = $<HTMLButtonElement>("#play");
 const pieceSelect = $<HTMLSelectElement>("#piece");
 const partSelect = $<HTMLSelectElement>("#part");
 const verseSelect = $<HTMLSelectElement>("#verse");
+const voicingSelect = $<HTMLSelectElement>("#voicing");
 const sliders = {
   mine: $<HTMLInputElement>("#mine"),
   choir: $<HTMLInputElement>("#choir"),
@@ -149,6 +150,14 @@ verseSelect.addEventListener("change", () => {
   render();
 });
 for (const s of [sliders.mine, sliders.choir, sliders.piano]) s.addEventListener("input", applyMix);
+
+const savedVoicing = recall("voicing");
+if (savedVoicing && [...voicingSelect.options].some(o => o.value === savedVoicing)) voicingSelect.value = savedVoicing;
+instruments.voicing = voicingSelect.value as Voicing;
+voicingSelect.addEventListener("change", () => {
+  instruments.voicing = voicingSelect.value as Voicing;
+  remember("voicing", voicingSelect.value);
+});
 sliders.tempo.addEventListener("input", applyTempo);
 
 let resizeTimer: number | undefined;
