@@ -7,6 +7,7 @@ elsewhere and are served by pointing `$MOCKINGBIRD_PIECES` at them.
 | Files | Work | Source | License |
 |---|---|---|---|
 | `wo-05`, `wo-09`, `wo-12`, `wo-17`, `wo-23`, `wo-28`, `wo-33`, `wo-35` | Bach, Weihnachtsoratorium BWV 248, chorales of parts I–III | notes from the music21 corpus (`bach/bwv248.*`); the oratorio's text laid under every voice | the music21 corpus terms (distributed with the encoders' permission); the work is public domain |
+| `wo-01`, `wo-21`, `wo-24`, `wo-26` | Bach, Weihnachtsoratorium BWV 248, choruses of parts I–III | CPDL editions by Pothám Imre, kept as received in `sources/cpdl/`; text repaired, No. 1's da capo written out | [CPDL license](https://www.cpdl.org/wiki/index.php/ChoralWiki:CPDL) |
 | `elias-11` | Mendelssohn, Elias op. 70, No. 11 "Baal, erhöre uns!" | transcribed from a public-domain vocal score on IMSLP | the work and the edition are public domain |
 
 ## Rebuilding
