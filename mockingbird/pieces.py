@@ -140,7 +140,7 @@ def _events(notes, ticks) -> list[PieceEvent]:
 
 
 def _voice(name: str, events: list[PieceEvent]) -> Voice:
-    lowered = name.lower()
+    lowered = name.lower().replace("ß", "ss")
     for prefix, voice in VOICE_NAMES.items():
         if lowered.startswith(prefix):
             return voice

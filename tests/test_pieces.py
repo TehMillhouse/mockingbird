@@ -83,3 +83,8 @@ def test_unfinished_words_are_continued(tmp_path):
     import re
     assert re.findall(r"<syllabic>(\w+)</syllabic>", pieces.musicxml(path)) == ["begin", "middle", "end", "single"]
     assert pieces.load_piece(path).verses[0].incipit == "erhöre uns"
+
+
+def test_voice_from_german_part_name():
+    high_bass = [pieces.PieceEvent(start=0, duration=480, pitches=[64])]
+    assert pieces._voice("Baß", high_bass) == "B"
