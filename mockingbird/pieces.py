@@ -70,10 +70,16 @@ class PieceSummary(BaseModel):
     composer: str | None
 
 
-def piece_files(directory: Path) -> dict[str, Path]:
-    if not directory.is_dir():
-        return {}
-    return {p.stem: p for p in sorted(directory.iterdir()) if p.suffix.lower() in SUFFIXES}
+def piece_files(directories: list[Path]) -> dict[str, Path]:
+    """Score files by id (the file name without suffix). Directories that do not exist
+    are skipped; where two directories hold the same id, the earlier one's file wins."""
+    out: dict[str, Path] = {}
+    for directory in directories:
+        if directory.is_dir():
+            for p in sorted(directory.iterdir()):
+                if p.suffix.lower() in SUFFIXES:
+                    out.setdefault(p.stem, p)
+    return out
 
 
 def load_piece(path: Path) -> Piece:
@@ -110,9 +116,11 @@ def _load(path: Path, _mtime: float) -> Piece:
     tempos = [t for i, t in enumerate(tempos) if i == 0 or t.bpm != tempos[i - 1].bpm]
 
     parts = []
+    # in a score without any text (say, one transcribed from audio) every part is sung
+    texted = any(n.lyrics for n in score.flatten().notes)
     for i, part in enumerate(score.parts):
         notes = [n for n in part.flatten().notes if n.duration.quarterLength > 0]  # no grace notes
-        sung = any(n.lyrics for n in notes)
+        sung = any(n.lyrics for n in notes) or not texted
         events = _events(notes, ticks)
         parts.append(PiecePart(index=i, name=part.partName or f"Part {i + 1}", sung=sung,
                                voice=_voice(part.partName or "", events) if sung else None, events=events))

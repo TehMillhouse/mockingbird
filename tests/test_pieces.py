@@ -48,6 +48,14 @@ def test_piece_playback_data(tmp_path):
     assert [(v.number, v.incipit) for v in p.verses] == [("1", "Cast thy"), ("2", "Wirf dein")]
 
 
+def test_parts_without_any_text_are_sung(tmp_path):
+    path = tmp_path / "x.musicxml"
+    alto, bass = stream.Part([note.Note("A4", quarterLength=4)]), stream.Part([note.Note("D3", quarterLength=4)])
+    alto.partName, bass.partName = "Alto", "Bass"
+    stream.Score([alto, bass]).write("musicxml", fp=str(path))
+    assert [(p.sung, p.voice) for p in pieces.load_piece(path).parts] == [(True, "A"), (True, "B")]
+
+
 def test_soft_hyphen_syllables_are_removed(tmp_path):
     path = tmp_path / "x.musicxml"
     path.write_text("""<?xml version="1.0" encoding="UTF-8"?>
@@ -63,7 +71,7 @@ def test_soft_hyphen_syllables_are_removed(tmp_path):
 
 def test_piece_routes(tmp_path, monkeypatch):
     _write_piece(tmp_path / "elias-15.musicxml")
-    monkeypatch.setattr(api, "PIECES", tmp_path)
+    monkeypatch.setattr(api, "PIECES", [tmp_path, tmp_path / "missing"])
     client = TestClient(api.create_app())  # no lifespan: the model is not needed for pieces
     assert client.get("/pieces").json() == [{"id": "elias-15", "title": "Wirf dein Anliegen", "composer": "Mendelssohn"}]
     assert client.get("/pieces/elias-15").json()["parts"][0]["name"] == "Soprano"
@@ -83,6 +91,16 @@ def test_unfinished_words_are_continued(tmp_path):
     import re
     assert re.findall(r"<syllabic>(\w+)</syllabic>", pieces.musicxml(path)) == ["begin", "middle", "end", "single"]
     assert pieces.load_piece(path).verses[0].incipit == "erhöre uns"
+
+
+def test_piece_files_from_several_directories(tmp_path):
+    public, private = tmp_path / "pieces", tmp_path / "custom_pieces"
+    public.mkdir(), private.mkdir()
+    for path in (public / "a.musicxml", public / "b.musicxml", private / "b.musicxml",
+                 private / "c.mxl", private / "notes.txt"):
+        path.write_text("")
+    files = pieces.piece_files([public, private, tmp_path / "missing"])
+    assert files == {"a": public / "a.musicxml", "b": public / "b.musicxml", "c": private / "c.mxl"}
 
 
 def test_voice_from_german_part_name():

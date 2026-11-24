@@ -1,14 +1,15 @@
 # Choir pieces
 
-The pieces the practice page serves by default (see `docs/FRONTEND.md`). Only files
-whose source allows passing them on belong here; pieces kept for private practice go
-elsewhere and are served by pointing `$MOCKINGBIRD_PIECES` at them.
+The pieces the practice page serves (see `docs/FRONTEND.md`). Only files whose source
+allows passing them on belong here. Pieces kept for private practice go in
+`custom_pieces/` next to this directory: git ignores it, and the server serves both.
+Where both hold a file of the same name, the one here wins. A private piece records
+where it comes from in its MusicXML `<identification><source>`.
 
 | Files | Work | Source | License |
 |---|---|---|---|
 | `wo-05`, `wo-09`, `wo-12`, `wo-17`, `wo-23`, `wo-28`, `wo-33`, `wo-35` | Bach, Weihnachtsoratorium BWV 248, chorales of parts I–III | notes from the music21 corpus (`bach/bwv248.*`); the oratorio's text laid under every voice | the music21 corpus terms (distributed with the encoders' permission); the work is public domain |
 | `wo-01`, `wo-21`, `wo-24`, `wo-26` | Bach, Weihnachtsoratorium BWV 248, choruses of parts I–III | CPDL editions by Pothám Imre, kept as received in `sources/cpdl/`; text repaired, No. 1's da capo written out | [CPDL license](https://www.cpdl.org/wiki/index.php/ChoralWiki:CPDL) |
-| `elias-11` | Mendelssohn, Elias op. 70, No. 11 "Baal, erhöre uns!" | transcribed from a public-domain vocal score on IMSLP | the work and the edition are public domain |
 
 ## Rebuilding
 

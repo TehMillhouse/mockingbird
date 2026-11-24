@@ -4,7 +4,8 @@
     POST /levels/warmup               GenerateRequest -> the built-in warm-up in its key and voice
     GET  /levels/{id}                 Level JSON
     GET  /levels/{id}/export?fmt=abc|musicxml|midi
-    GET  /pieces                      choir pieces in $MOCKINGBIRD_PIECES (default pieces/ in the checkout)
+    GET  /pieces                      choir pieces in $MOCKINGBIRD_PIECES (a path list; by
+                                      default pieces/ and custom_pieces/ in the checkout)
     GET  /pieces/{id}                 Piece JSON: parts as sounding events, bars, tempo map, verses
     GET  /pieces/{id}/musicxml        the score, cleaned up for rendering
     GET  /health
@@ -32,7 +33,10 @@ from ..schema import GenerateRequest, Level
 ROOT = Path(__file__).resolve().parents[2]
 PREVIEW_PAGE = ROOT / "tools" / "abc_preview.html"
 WEB_DIST = Path(os.environ.get("MOCKINGBIRD_WEB", ROOT / "web" / "dist"))
-PIECES = Path(os.environ.get("MOCKINGBIRD_PIECES", ROOT / "pieces"))
+# pieces/ holds the pieces that may be passed on; custom_pieces/ (ignored by git) those
+# kept for private practice. $MOCKINGBIRD_PIECES replaces both with its own list.
+PIECES = ([Path(p) for p in os.environ["MOCKINGBIRD_PIECES"].split(os.pathsep) if p]
+          if os.environ.get("MOCKINGBIRD_PIECES") else [ROOT / "pieces", ROOT / "custom_pieces"])
 # levels are kept for their exports; the oldest are forgotten beyond this many
 MAX_LEVELS = 1000
 
