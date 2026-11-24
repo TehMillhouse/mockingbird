@@ -4,8 +4,12 @@ import { type ScoreSystem, scoreSystems, type ScoreView, type Target } from "./s
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TICKS_PER_WHOLE = 4 * TICKS_PER_QUARTER;
+// staff spaces from a bar's start (or its clef, key and time) to where the cursor sits
+// on its first beat when no note starts there
+const BAR_PADDING = 1;
 
-/** A moment some note starts at, on one system, in SVG units. */
+/** A moment the cursor stops at, on one system, in SVG units: where some note starts,
+ * or the start of a bar (so that it moves through bars of rests too). */
 interface Onset {
   ticks: number;
   system: number;
@@ -20,6 +24,8 @@ interface Bar {
   system: number;
   left: number;
   right: number;
+  /** Where its first beat is: after the clef, key and time signature if it has them. */
+  first: number;
 }
 
 // The parts of OSMD's graphical model used here; its typings do not export them all.
@@ -32,6 +38,7 @@ interface GMeasure {
   staffEntries: { relInMeasureTimestamp: { RealValue: number }; graphicalVoiceEntries: { notes: GNote[] }[] }[];
   ParentStaffLine?: { ParentMusicSystem: object; PositionAndShape: Box };
   PositionAndShape: Box;
+  beginInstructionsWidth: number;
 }
 interface Box {
   AbsolutePosition: { x: number; y: number };
@@ -116,10 +123,12 @@ export class OsmdScore implements ScoreView {
         const start = Math.round(gm.parentSourceMeasure.AbsoluteTimestamp.RealValue * TICKS_PER_WHOLE);
         if (staff === 0) {
           const box = gm.PositionAndShape;
+          const left = box.AbsolutePosition.x + box.BorderLeft;
           this.bars.push({
             ticks: start, system,
-            left: ux(box.AbsolutePosition.x + box.BorderLeft),
+            left: ux(left),
             right: ux(box.AbsolutePosition.x + box.BorderRight),
+            first: ux(left + gm.beginInstructionsWidth + BAR_PADDING),
           });
         }
         for (const entry of gm.staffEntries) {
@@ -151,8 +160,13 @@ export class OsmdScore implements ScoreView {
         }
       }
     }
-    this.onsets = [...byTicks.values()].sort((a, b) => a.ticks - b.ticks);
     this.bars.sort((a, b) => a.ticks - b.ticks);
+    for (const bar of this.bars) {
+      if (!byTicks.has(bar.ticks)) {
+        byTicks.set(bar.ticks, { ticks: bar.ticks, system: bar.system, x: bar.first, end: bar.first, heads: [] });
+      }
+    }
+    this.onsets = [...byTicks.values()].sort((a, b) => a.ticks - b.ticks);
     this.targets.sort((a, b) => a.start - b.start);
     this.onsets.forEach((on, i) => {
       const next = this.onsets[i + 1];
