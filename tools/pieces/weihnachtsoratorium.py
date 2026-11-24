@@ -17,7 +17,7 @@ import copy
 from dataclasses import dataclass
 from pathlib import Path
 
-from music21 import converter, corpus, expressions, metadata, stream, tempo
+from music21 import converter, corpus, expressions, metadata, spanner, stream, tempo
 
 from mockingbird import lyrics
 
@@ -146,9 +146,31 @@ def build_chorus(c: Chorus, cpdl: Path) -> tuple[stream.Score, list[str]]:
         unknown = lyrics.join_words(part, libretto)
         if unknown:
             problems.append(f"{part.partName}: not in the libretto: {unknown[:8]}")
+    split_off_last_rest_bar(score)
     if c.da_capo:
         write_out_da_capo(score)
     return score, problems
+
+
+def split_off_last_rest_bar(score: stream.Score) -> None:
+    """Leave the last bar of every multi-bar rest on its own, so that playback can be
+    started a bar before the voice comes in."""
+    for sp in list(score.recurse().getElementsByClass(spanner.MultiMeasureRest)):
+        rests = sp.getSpannedElements()
+        if len(rests) < 2:
+            continue
+        last = rests[-1]
+        bar = last.getContextByClass(stream.Measure)
+        sp.spannerStorage.remove(last)
+        # the source hides the rests inside a multi-bar rest and squeezes their bars
+        last.style.hideObjectOnPrint = False
+        last.style.absoluteX = None
+        if bar is not None:
+            bar.layoutWidth = None
+        if len(rests) == 2:
+            sp.activeSite.remove(sp)
+        else:
+            sp.numRests = len(rests) - 1
 
 
 def fix_typos(part: stream.Part, fixes: tuple[tuple[str, str, str], ...]) -> None:

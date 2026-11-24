@@ -8,7 +8,7 @@
   <identification>
     <creator type="composer">Johann Sebastian Bach</creator>
     <encoding>
-      <encoding-date>2026-11-20</encoding-date>
+      <encoding-date>2026-11-23</encoding-date>
       <software>music21 v.10.5.0</software>
       <supports element="beam" type="yes" />
       <supports element="stem" type="yes" />
@@ -73,11 +73,11 @@
     <score-part id="P1">
       <part-name>Sopran</part-name>
       <part-abbreviation>Ch</part-abbreviation>
-      <score-instrument id="I059106b22f6788d6d9433cfbb25080c3">
+      <score-instrument id="I6df1704809529fe051daf6a100e746d7">
         <instrument-name>Instrument 1</instrument-name>
         <instrument-abbreviation>Ch</instrument-abbreviation>
       </score-instrument>
-      <midi-instrument id="I059106b22f6788d6d9433cfbb25080c3">
+      <midi-instrument id="I6df1704809529fe051daf6a100e746d7">
         <midi-channel>1</midi-channel>
         <midi-program>53</midi-program>
       </midi-instrument>
@@ -85,11 +85,11 @@
     <score-part id="P2">
       <part-name>Alt</part-name>
       <part-abbreviation>Ch</part-abbreviation>
-      <score-instrument id="Idf4071519ca30bea0f85d8b221ac00ec">
+      <score-instrument id="Ib0433a2b95b8ad59240303250d5d5cd7">
         <instrument-name>Instrument 2</instrument-name>
         <instrument-abbreviation>Ch</instrument-abbreviation>
       </score-instrument>
-      <midi-instrument id="Idf4071519ca30bea0f85d8b221ac00ec">
+      <midi-instrument id="Ib0433a2b95b8ad59240303250d5d5cd7">
         <midi-channel>2</midi-channel>
         <midi-program>53</midi-program>
       </midi-instrument>
@@ -97,11 +97,11 @@
     <score-part id="P3">
       <part-name>Tenor</part-name>
       <part-abbreviation>Ch</part-abbreviation>
-      <score-instrument id="I8af5fcb5c334f9129dedc0e17db5e7fe">
+      <score-instrument id="I1270178e4d6c049beead63a6c93b8f9a">
         <instrument-name>Instrument 3</instrument-name>
         <instrument-abbreviation>Ch</instrument-abbreviation>
       </score-instrument>
-      <midi-instrument id="I8af5fcb5c334f9129dedc0e17db5e7fe">
+      <midi-instrument id="I1270178e4d6c049beead63a6c93b8f9a">
         <midi-channel>3</midi-channel>
         <midi-program>53</midi-program>
       </midi-instrument>
@@ -109,11 +109,11 @@
     <score-part id="P4">
       <part-name>Baß</part-name>
       <part-abbreviation>Ch</part-abbreviation>
-      <score-instrument id="Ie6900b199da474b6e4375bd622b54a56">
+      <score-instrument id="I3dd347a43450422b16658aa8a2e7fe07">
         <instrument-name>Instrument 4</instrument-name>
         <instrument-abbreviation>Ch</instrument-abbreviation>
       </score-instrument>
-      <midi-instrument id="Ie6900b199da474b6e4375bd622b54a56">
+      <midi-instrument id="I3dd347a43450422b16658aa8a2e7fe07">
         <midi-channel>4</midi-channel>
         <midi-program>53</midi-program>
       </midi-instrument>
@@ -147,7 +147,7 @@
           <line>2</line>
         </clef>
         <measure-style>
-          <multiple-rest use-symbols="no">16</multiple-rest>
+          <multiple-rest use-symbols="no">15</multiple-rest>
         </measure-style>
       </attributes>
       <direction>
@@ -263,8 +263,8 @@
       </note>
     </measure>
     <!--========================= Measure 16 =========================-->
-    <measure implicit="no" number="16" width="0">
-      <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
+    <measure implicit="no" number="16">
+      <note default-y="0">
         <rest measure="yes" />
         <duration>15120</duration>
       </note>
@@ -1760,7 +1760,7 @@
     <measure implicit="no" number="49" width="0">
       <attributes>
         <measure-style>
-          <multiple-rest use-symbols="no">16</multiple-rest>
+          <multiple-rest use-symbols="no">15</multiple-rest>
         </measure-style>
       </attributes>
       <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
@@ -1867,8 +1867,8 @@
       </note>
     </measure>
     <!--========================= Measure 64 =========================-->
-    <measure implicit="no" number="64" width="0">
-      <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
+    <measure implicit="no" number="64">
+      <note default-y="0">
         <rest measure="yes" />
         <duration>15120</duration>
       </note>
@@ -3437,7 +3437,7 @@
         </clef>
         <staff-details print-object="yes" />
         <measure-style>
-          <multiple-rest use-symbols="no">16</multiple-rest>
+          <multiple-rest use-symbols="no">15</multiple-rest>
         </measure-style>
       </attributes>
       <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
@@ -3544,8 +3544,8 @@
       </note>
     </measure>
     <!--========================= Measure 16 =========================-->
-    <measure implicit="no" number="16" width="0">
-      <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
+    <measure implicit="no" number="16">
+      <note default-y="0">
         <rest measure="yes" />
         <duration>15120</duration>
       </note>
@@ -4946,7 +4946,7 @@
     <measure implicit="no" number="49" width="0">
       <attributes>
         <measure-style>
-          <multiple-rest use-symbols="no">16</multiple-rest>
+          <multiple-rest use-symbols="no">15</multiple-rest>
         </measure-style>
       </attributes>
       <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
@@ -5053,8 +5053,8 @@
       </note>
     </measure>
     <!--========================= Measure 64 =========================-->
-    <measure implicit="no" number="64" width="0">
-      <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
+    <measure implicit="no" number="64">
+      <note default-y="0">
         <rest measure="yes" />
         <duration>15120</duration>
       </note>
@@ -6379,7 +6379,7 @@
         </clef>
         <staff-details print-object="yes" />
         <measure-style>
-          <multiple-rest use-symbols="no">16</multiple-rest>
+          <multiple-rest use-symbols="no">15</multiple-rest>
         </measure-style>
       </attributes>
       <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
@@ -6486,8 +6486,8 @@
       </note>
     </measure>
     <!--========================= Measure 16 =========================-->
-    <measure implicit="no" number="16" width="0">
-      <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
+    <measure implicit="no" number="16">
+      <note default-y="0">
         <rest measure="yes" />
         <duration>15120</duration>
       </note>
@@ -7792,7 +7792,7 @@
     <measure implicit="no" number="49" width="0">
       <attributes>
         <measure-style>
-          <multiple-rest use-symbols="no">16</multiple-rest>
+          <multiple-rest use-symbols="no">15</multiple-rest>
         </measure-style>
       </attributes>
       <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
@@ -7899,8 +7899,8 @@
       </note>
     </measure>
     <!--========================= Measure 64 =========================-->
-    <measure implicit="no" number="64" width="0">
-      <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
+    <measure implicit="no" number="64">
+      <note default-y="0">
         <rest measure="yes" />
         <duration>15120</duration>
       </note>
@@ -9209,7 +9209,7 @@
         </clef>
         <staff-details print-object="yes" />
         <measure-style>
-          <multiple-rest use-symbols="no">16</multiple-rest>
+          <multiple-rest use-symbols="no">15</multiple-rest>
         </measure-style>
       </attributes>
       <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
@@ -9316,8 +9316,8 @@
       </note>
     </measure>
     <!--========================= Measure 16 =========================-->
-    <measure implicit="no" number="16" width="0">
-      <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
+    <measure implicit="no" number="16">
+      <note default-y="0">
         <rest measure="yes" />
         <duration>15120</duration>
       </note>
@@ -10125,7 +10125,7 @@
     <measure implicit="no" number="49" width="0">
       <attributes>
         <measure-style>
-          <multiple-rest use-symbols="no">16</multiple-rest>
+          <multiple-rest use-symbols="no">15</multiple-rest>
         </measure-style>
       </attributes>
       <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
@@ -10232,8 +10232,8 @@
       </note>
     </measure>
     <!--========================= Measure 64 =========================-->
-    <measure implicit="no" number="64" width="0">
-      <note default-x="0" default-y="0" print-object="no" print-spacing="yes">
+    <measure implicit="no" number="64">
+      <note default-y="0">
         <rest measure="yes" />
         <duration>15120</duration>
       </note>
