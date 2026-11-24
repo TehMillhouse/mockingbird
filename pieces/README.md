@@ -24,3 +24,20 @@ python tools/pieces/weihnachtsoratorium.py 12 24    # only these numbers
 
 It prints each file it writes; anything indented below a file name is a problem to
 look at, such as a syllable without a note or a word the libretto does not have.
+
+## Private pieces from practice tracks
+
+`tools/pieces/practice_audio.py` transcribes MIDI-rendered practice mp3s (one per
+voice, the voice alone on the right channel, as Cyberbass makes them) into a score
+without text. The audio has no bar lines, so each piece's entry takes its metre, key and
+first bar line from a printed score, and names both sources in the MusicXML's
+`<source>`. It reads the mp3s from `custom_pieces/sources/` and writes the scores to
+`custom_pieces/`:
+
+```bash
+uv run --group pieces python tools/pieces/practice_audio.py
+```
+
+The audio settles pitches and rhythm but not spelling: enharmonics come from rules
+(see `spell`), so an augmented sixth or a chromatic line can come out spelled the other
+way. Where the render shortens or holds a note, the score follows the render.
